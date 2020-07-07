@@ -1,0 +1,37 @@
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sfr-bpe-psturmfels
+  namespace: sfr-ns-psturmfels
+spec:
+  restartPolicy: OnFailure
+  volumes:
+    - name: sfr-home-pv-psturmfels
+      persistentVolumeClaim:
+        claimName: sfr-home-pvc-psturmfels
+    - name: sfr-share-pv-psturmfels
+      persistentVolumeClaim:
+        claimName: sfr-share-pvc-psturmfels
+  containers:
+    - name: psturmfels-default-cpu
+      image: "gcr.io/salesforce-research-internal/psturmfels-default"
+      command: ["/bin/bash", "-c", "cd /export/home/tape/scripts/bpe/ && python -u vocab_builder.py --kmer_length 5 --kmer_overlap 4 && python -u learn_bpe_vocabulary.py --num_iterations 10000 --output_file /export/home/tape/scripts/bpe/naive_10k.pkl"]
+      resources:
+        limits:
+          cpu: "1"
+          memory: "20Gi"
+      volumeMounts:
+        - name: sfr-home-pv-psturmfels
+          mountPath: "/export/home"
+        - name: sfr-share-pv-psturmfels
+          mountPath: "/export/share"
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: sfr-node-type
+            operator: In
+            values:
+            - standard16

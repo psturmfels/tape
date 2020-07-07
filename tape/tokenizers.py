@@ -172,3 +172,40 @@ class TAPETokenizer():
     @classmethod
     def from_pretrained(cls, **kwargs):
         return cls()
+
+class BPETokenizer(TAPETokenizer):
+    """
+    Tokenizes protein sequences using learned byte pair encoding symbols.
+    """
+
+    def __init__(self, vocab = 'iupac', merge_operations: List = None):
+        super().__init__(vocab=vocab)
+
+        if merge_operations is None:
+            logger.warn("""You've specified a BPE tokenizer but
+                           no merge operations. This defaults to character
+                           level tokenization.""")
+        self.merge_operations = merge_operations
+
+        self._build_vocabulary()
+
+    def _build_vocabulary(self):
+        current_index = next(reversed(self.vocab.values())) + 1
+        for operation in self.merge_operations:
+            token = operation[0] + operation[1]
+            self.vocab[token] = current_index
+            current_index += 1
+
+    def tokenize(self, text: str) -> List[str]:
+        tokens = list(text)
+        for operation in self.merge_operations:
+            i = 0
+            while True:
+                if tokens[i] == operation[0] and \
+                    tokens[i + 1] == operation[1]:
+                    tokens[i] = tokens[i] + tokens[i + 1]
+                    del tokens[i + 1]
+                i = i + 1
+                if i >= len(tokens) - 1:
+                    break
+        return tokens

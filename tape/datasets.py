@@ -5,6 +5,13 @@ import pickle as pkl
 import logging
 import random
 
+## Some custom imports ##
+#########################
+import urllib
+import pandas as pd
+from io import StringIO
+#########################
+
 import lmdb
 import numpy as np
 import torch
@@ -12,7 +19,7 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset
 from scipy.spatial.distance import pdist, squareform
 
-from .tokenizers import TAPETokenizer
+from .tokenizers import TAPETokenizer, BPETokenizer
 from .registry import registry
 
 logger = logging.getLogger(__name__)
@@ -281,7 +288,6 @@ class EmbedDataset(Dataset):
         input_mask = torch.from_numpy(pad_sequences(input_mask))
         return {'ids': ids, 'input_ids': tokens, 'input_mask': input_mask}  # type: ignore
 
-
 @registry.register_task('masked_language_modeling')
 class MaskedLanguageModelingDataset(Dataset):
     """Creates the Masked Language Modeling Pfam Dataset
@@ -370,6 +376,84 @@ class MaskedLanguageModelingDataset(Dataset):
 
         return masked_tokens, labels
 
+
+@registry.register_task('bpe_masked_language_modeling')
+class BPEMaskedLangaugeModelingDataset(MaskedLanguageModelingDataset):
+    def __init__(self,
+                 data_path: Union[str, Path],
+                 split: str,
+                 tokenizer: Union[str, TAPETokenizer, BPETokenizer] = 'iupac',
+                 in_memory: bool = False):
+        super().__init__(data_path=data_path,
+                         split=split,
+                         tokenizer=tokenizer,
+                         in_memory=in_memory)
+
+@registry.register_task('mutation_language_modeling')
+class MutationLanguageModelingDataset(MaskedLanguageModelingDataset):
+    def __init__(self,
+                 data_path: Union[str, Path],
+                 split: str,
+                 tokenizer: Union[str, TAPETokenizer] = 'iupac',
+                 in_memory: bool = False):
+        super().__init__(data_path=data_path,
+                         split=split,
+                         tokenizer=tokenizer,
+                         in_memory=in_memory)
+
+        # Read a blosum matrix for mutation probabilities
+        blosum_url = 'https://www.ncbi.nlm.nih.gov/Class/BLAST/BLOSUM62.txt'
+        response = urllib.request.urlopen(blosum_url)
+        data = []
+        for line in response:
+            line = line.decode('utf-8').strip()
+            if line.startswith('#'):
+                continue
+            data.append(line)
+        columns = data[0].split()
+        outputs = copy(columns)
+        outputs = outputs[:-1]
+        outputs += ['O'] * 2
+        values = [row.split()[1:] for row in data[1:]]
+        values = [[int(x) for x in row] for row in values]
+        values = np.array(values)
+        values = values[:-1, :-1]
+
+        # This next line avoids mutations back to the original base
+        np.fill_diagonal(values, np.min(values))
+        values = np.insert(values, [values.shape[1], values.shape[1]], -4, axis=1)
+        values = values - np.min(values, axis=1, keepdims=True)
+        values = values / np.sum(values, axis=1, keepdims=True)
+        mapping_probabilities = { base: value for (base, value) in zip(columns[:-1], values)}
+        self.mapping_probabilities = mapping_probabilities
+        self.output_map = outputs
+
+    def _apply_bert_mask(self,
+                         tokens: List[str],
+                         mut_prob=0.15) -> Tuple[List[str], List[int]]:
+        masked_tokens = copy(tokens)
+        labels = np.zeros([len(tokens)], np.int64) - 1
+
+        for i, token in enumerate(tokens):
+            # Tokens begin and end with start_token and stop_token, ignore these
+            if token in (self.tokenizer.start_token, self.tokenizer.stop_token):
+                pass
+
+            prob = random.random()
+            if prob < mut_prob:
+                labels[i] = self.tokenizer.convert_token_to_id(token)
+
+                # Converts to a random token according to BLOSUM62 probabilities
+                weights = None
+                if token in self.mapping_probabilities:
+                    weights = self.mapping_probabilities[token]
+                random_id = np.random.choice(len(self.output_map),
+                                             p=weights)
+                token = self.output_map[random_id]
+                # token = self.tokenizer.convert_id_to_token(random_id)
+
+                masked_tokens[i] = token
+        return masked_tokens, labels
 
 @registry.register_task('language_modeling')
 class LanguageModelingDataset(Dataset):
