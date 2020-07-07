@@ -14,7 +14,7 @@ import copy
 import pickle
 from tqdm import tqdm
 from collections import defaultdict, Counter
-from .vocab_builder import VocabularyBuilder
+from vocab_builder import VocabularyBuilder
 
 from absl import app, flags
 FLAGS = flags.FLAGS
@@ -214,11 +214,6 @@ def main(argv=None):
     symbol_frequencies = learn_bpe(vocab, num_iterations=FLAGS.num_iterations)
     with open(FLAGS.output_file, 'wb') as save_file:
         pickle.dump(symbol_frequencies, save_file)
-
-vocab = { tuple('aaaaa'): 5, tuple('baabb'): 3, tuple('ababb'): 2 }
-symbol_frequencies = learn_bpe(vocab, num_iterations=5)
-symbol_frequencies
-
 
 if __name__ == '__main__':
     app.run(main)

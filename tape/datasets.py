@@ -5,12 +5,12 @@ import pickle as pkl
 import logging
 import random
 
-## Some custom imports ##
-#########################
+## MARK: psturmfels custom code ##
+##################################
 import urllib
 import pandas as pd
 from io import StringIO
-#########################
+##################################
 
 import lmdb
 import numpy as np
@@ -376,7 +376,8 @@ class MaskedLanguageModelingDataset(Dataset):
 
         return masked_tokens, labels
 
-
+## MARK: psturmfels custom code ##
+##################################
 @registry.register_task('bpe_masked_language_modeling')
 class BPEMaskedLangaugeModelingDataset(MaskedLanguageModelingDataset):
     def __init__(self,
@@ -454,6 +455,7 @@ class MutationLanguageModelingDataset(MaskedLanguageModelingDataset):
 
                 masked_tokens[i] = token
         return masked_tokens, labels
+##################################
 
 @registry.register_task('language_modeling')
 class LanguageModelingDataset(Dataset):

@@ -5,7 +5,6 @@ import argparse
 import warnings
 import inspect
 
-
 try:
     import apex  # noqa: F401
     APEX_FOUND = True
@@ -15,6 +14,7 @@ except ImportError:
 from .registry import registry
 from . import training
 from . import utils
+
 
 CallbackList = typing.Sequence[typing.Callable]
 OutputDict = typing.Dict[str, typing.List[typing.Any]]

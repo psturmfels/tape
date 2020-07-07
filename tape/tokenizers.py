@@ -173,6 +173,8 @@ class TAPETokenizer():
     def from_pretrained(cls, **kwargs):
         return cls()
 
+## MARK: psturmfels custom code ##
+##################################
 class BPETokenizer(TAPETokenizer):
     """
     Tokenizes protein sequences using learned byte pair encoding symbols.
@@ -209,3 +211,4 @@ class BPETokenizer(TAPETokenizer):
                 if i >= len(tokens) - 1:
                     break
         return tokens
+##################################
