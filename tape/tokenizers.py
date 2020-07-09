@@ -1,4 +1,4 @@
-from typing import List
+from typing import Union, List, Tuple, Sequence, Dict, Any, Optional, Collection
 import logging
 from collections import OrderedDict
 import numpy as np
@@ -198,7 +198,17 @@ class BPETokenizer(TAPETokenizer):
             self.vocab[token] = current_index
             current_index += 1
 
-    def tokenize(self, text: str) -> List[str]:
+    def tokenize(self, text: Union[str, List[str]]) -> List[str]:
+        if isinstance(text, list):
+            # In this case we assume the sequence has already been tokenized
+            # for us as an array.
+            return text
+        elif '$' in text:
+            # In this case we assume that `$` separators have been inserted
+            # between tokens in the string.
+            return text.split('$')
+
+        # If not, we fall back on a somewhat expensive tokenize operation.
         tokens = list(text)
         for operation in self.merge_operations:
             i = 0

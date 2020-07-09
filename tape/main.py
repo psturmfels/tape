@@ -39,8 +39,8 @@ def create_base_parser() -> argparse.ArgumentParser:
     parser.add_argument('--local_rank', type=int, default=-1,
                         help='Local rank of process in distributed training. '
                              'Set by launch script.')
-    parser.add_argument('--tokenizer', choices=['iupac', 'unirep'],
-                        default='iupac', help='Tokenizes to use on the amino acid sequences')
+    parser.add_argument('--tokenizer', type=str, # choices=['iupac', 'unirep'],
+                        default='iupac', help='Tokenizer to use on the amino acid sequences')
     parser.add_argument('--num_workers', default=8, type=int,
                         help='Number of workers to use for multi-threaded data loading')
     parser.add_argument('--log_level', default=logging.INFO,
@@ -48,6 +48,16 @@ def create_base_parser() -> argparse.ArgumentParser:
                                  logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR],
                         help="log level for the experiment")
     parser.add_argument('--debug', action='store_true', help='Run in debug mode')
+
+    ## MARK: psturmfels custom code ##
+    ##################################
+    parser.add_argument('--WANDB_API_KEY', default=None, type=str,
+                        help='Sets the WANDB_API_KEY environment variable')
+    parser.add_argument('--WANDB_USERNAME', default=None, type=str,
+                        help='Sets the WANDB_USERNAME environment variable')
+    parser.add_argument('--WANDB_PROJECT', default='protein_sequences', type=str,
+                        help='Sets the WANDB_PROJECT environment variable')
+    ##################################
 
     return parser
 
@@ -160,6 +170,16 @@ def create_distributed_parser(base_parser: argparse.ArgumentParser) -> argparse.
                              "training")
     return parser
 
+## MARK: psturmfels custom code ##
+##################################
+def init_wandb_vars(args):
+    if args.WANDB_API_KEY is not None:
+        os.environ['WANDB_API_KEY'] = args.WANDB_API_KEY
+    if args.WANDB_PROJECT is not None:
+        os.environ['WANDB_PROJECT'] = args.WANDB_PROJECT
+    if args.WANDB_USERNAME is not None:
+        os.environ['WANDB_USERNAME'] = args.WANDB_USERNAME
+##################################
 
 def run_train(args: typing.Optional[argparse.Namespace] = None, env=None) -> None:
     if env is not None:
@@ -188,6 +208,10 @@ def run_train(args: typing.Optional[argparse.Namespace] = None, env=None) -> Non
         raise RuntimeError(f"Missing arguments: {missing}")
     train_args = {name: arg_dict[name] for name in arg_names}
 
+    ## MARK: psturmfels custom code ##
+    ##################################
+    init_wandb_vars(args)
+    ##################################
     training.run_train(**train_args)
 
 
@@ -210,6 +234,10 @@ def run_eval(args: typing.Optional[argparse.Namespace] = None) -> typing.Dict[st
         raise RuntimeError(f"Missing arguments: {missing}")
     eval_args = {name: arg_dict[name] for name in arg_names}
 
+    ## MARK: psturmfels custom code ##
+    ##################################
+    init_wandb_vars(args)
+    ##################################
     return training.run_eval(**eval_args)
 
 
@@ -231,6 +259,10 @@ def run_embed(args: typing.Optional[argparse.Namespace] = None) -> None:
         raise RuntimeError(f"Missing arguments: {missing}")
     embed_args = {name: arg_dict[name] for name in arg_names}
 
+    ## MARK: psturmfels custom code ##
+    ##################################
+    init_wandb_vars(args)
+    ##################################
     training.run_embed(**embed_args)
 
 
@@ -242,6 +274,11 @@ def run_train_distributed(args: typing.Optional[argparse.Namespace] = None) -> N
         distributed_parser = create_distributed_parser(base_parser)
         distributed_train_parser = create_train_parser(distributed_parser)
         args = distributed_train_parser.parse_args()
+
+    ## MARK: psturmfels custom code ##
+    ##################################
+    init_wandb_vars(args)
+    ##################################
 
     # Define the experiment name here, instead of dealing with barriers and communication
     # when getting the experiment name

@@ -454,7 +454,11 @@ class ProteinBertModel(ProteinBertAbstractModel):
         outputs = (sequence_output, pooled_output,) + encoder_outputs[1:]
         return outputs  # sequence_output, pooled_output, (hidden_states), (attentions)
 
-
+## MARK: psturmfels custom code ##
+##################################
+@registry.register_task_model('bpe_masked_language_modeling', 'transformer')
+@registry.register_task_model('mutation_language_modeling', 'transformer')
+##################################
 @registry.register_task_model('masked_language_modeling', 'transformer')
 class ProteinBertForMaskedLM(ProteinBertAbstractModel):
 

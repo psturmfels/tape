@@ -15,6 +15,7 @@ import pickle
 from tqdm import tqdm
 from collections import defaultdict, Counter
 from vocab_builder import VocabularyBuilder
+from tape.tokenizers import BPETokenizer
 
 from absl import app, flags
 FLAGS = flags.FLAGS
@@ -212,8 +213,10 @@ def main(argv=None):
     vocab = get_vocabulary(dataset)
     print('Running byte pair encoding...')
     symbol_frequencies = learn_bpe(vocab, num_iterations=FLAGS.num_iterations)
+    tokenizer = BPETokenizer(merge_operations=symbol_frequencies)
+
     with open(FLAGS.output_file, 'wb') as save_file:
-        pickle.dump(symbol_frequencies, save_file)
+        pickle.dump(tokenizer, save_file)
 
 if __name__ == '__main__':
     app.run(main)

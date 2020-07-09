@@ -8,6 +8,7 @@ import random
 ## MARK: psturmfels custom code ##
 ##################################
 import urllib
+import os
 import pandas as pd
 from io import StringIO
 ##################################
@@ -166,7 +167,6 @@ class LMDBDataset(Dataset):
                 if self._in_memory:
                     self._cache[index] = item
         return item
-
 
 class JSONDataset(Dataset):
     """Creates a dataset from a json file. Assumes that data is
@@ -385,6 +385,13 @@ class BPEMaskedLangaugeModelingDataset(MaskedLanguageModelingDataset):
                  split: str,
                  tokenizer: Union[str, TAPETokenizer, BPETokenizer] = 'iupac',
                  in_memory: bool = False):
+        if isinstance(tokenizer, str):
+            try:
+                with open(tokenizer, 'rb') as tokenizer_file:
+                    tokenizer = pkl.load(tokenizer_file)
+            except FileNotFoundError:
+                pass
+
         super().__init__(data_path=data_path,
                          split=split,
                          tokenizer=tokenizer,
