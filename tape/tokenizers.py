@@ -198,6 +198,11 @@ class BPETokenizer(TAPETokenizer):
             self.vocab[token] = current_index
             current_index += 1
 
+        # We need to add this line again because we've now changed
+        # the vocabulary. This re-indexes the vocabulary
+        # with the updated tokens added by BPE.
+        self.tokens = list(self.vocab.keys())
+
     def tokenize(self, text: Union[str, List[str]]) -> List[str]:
         if isinstance(text, list):
             # In this case we assume the sequence has already been tokenized
