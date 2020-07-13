@@ -52,11 +52,12 @@ def tokenize_indices(dataset, indices, tokenizer, q):
         item = dataset.data[index]
         sequence = item['primary']
         tokenized_sequence = tokenizer.tokenize(sequence)
+        num_tokens = len(tokenized_sequence)
         tokenized_sequence = '$'.join(tokenized_sequence)
 
         tokenized_item = {
             'primary': tokenized_sequence,
-            'num_tokens': len(tokenized_sequence),
+            'num_tokens': num_tokens,
             'protein_length': item['protein_length'],
             'clan': item['clan'],
             'family': item['family'],
