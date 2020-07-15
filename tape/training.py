@@ -302,6 +302,18 @@ def run_train_epoch(epoch_id: int,
         if (step + 1) % gradient_accumulation_steps == 0:
             runner.step()
             viz.log_metrics(accumulator.step(), "train", runner.global_step)
+            ## MARK: psturmfels custom code ##
+            ##################################
+            # This logs the learning rate over time. It's kind of nice
+            # just to view it next to the loss.
+            if runner.scheduler is not None:
+                curr_lr = runner.scheduler.get_lr()[0]  # type: ignore
+            else:
+                curr_lr = runner.optimizer.param_groups[0]['lr']
+            viz.log_metrics({'learning rate': float(curr_lr)},
+                            "train",
+                            runner.global_step)
+            ##################################
             if runner.global_step % num_log_iter == 0:
                 end_t = timer()
                 logger.info(make_log_str(step, end_t - start_t))
