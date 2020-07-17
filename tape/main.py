@@ -122,6 +122,13 @@ def create_eval_parser(base_parser: argparse.ArgumentParser) -> argparse.Argumen
                         nargs='*')
     parser.add_argument('--split', default='test', type=str,
                         help='Which split to run on')
+    ## MARK: psturmfels custom code ##
+    ##################################
+    parser.add_argment('--mask_fraction', default=None,
+                       type=float,
+                       help='Percentage of tokens to randomly '
+                            'mask during evaluation')
+    ##################################
     return parser
 
 

@@ -5,6 +5,10 @@ import logging
 from pathlib import Path
 import sys
 
+## MARK: psturmfels custom code ##
+##################################
+import numpy as np
+##################################
 import torch
 import torch.distributed as dist
 from torch.utils.data import DataLoader, RandomSampler, Dataset
@@ -99,7 +103,8 @@ def setup_loader(dataset: Dataset,
                  local_rank: int,
                  n_gpu: int,
                  gradient_accumulation_steps: int,
-                 num_workers: int) -> DataLoader:
+                 num_workers: int,
+                 mask_fraction: typing.Optional[float] = None) -> DataLoader:
     sampler = DistributedSampler(dataset) if local_rank != -1 else RandomSampler(dataset)
     batch_size = get_effective_batch_size(
         batch_size, local_rank, n_gpu, gradient_accumulation_steps) * n_gpu
@@ -107,10 +112,30 @@ def setup_loader(dataset: Dataset,
     batch_sampler = BucketBatchSampler(
         sampler, batch_size, False, lambda x: len(x[0]), dataset)
 
+    ## MARK: psturmfels custom code ##
+    ##################################
+    if mask_fraction is not None:
+        def collate_fn(batch):
+            batch_dict = dataset.collate_fn(batch)
+            input_ids = batch_dict['input_ids']
+
+            source_tensor = torch.ones_like(input_ids)
+            selection_tensor = np.random.uniform(size=list(input_ids.shape))
+            selection_tensor = selection_tensor < mask_fraction
+            selection_tensor = torch.tensor(selection_tensor)
+            input_ids.masked_scatter_(selection_tensor, source_tensor)
+            batch_dict['input_ids'] = input_ids
+            return batch_dict
+    else:
+        collate_fn = dataset.collate_fn
+    ##################################
     loader = DataLoader(
         dataset,
         num_workers=num_workers,
-        collate_fn=dataset.collate_fn,  # type: ignore
+        ## MARK: psturmfels custom code ##
+        ##################################
+        collate_fn=collate_fn,  # type: ignore
+        ##################################
         batch_sampler=batch_sampler)
 
     return loader
