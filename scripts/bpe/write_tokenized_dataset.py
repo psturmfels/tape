@@ -107,7 +107,7 @@ def main(args=None):
 
     output_file = os.path.join(args.output_directory,
                                f'pfam/pfam_{args.split}.lmdb')
-    env = lmdb.open(output_file, map_size=1e11)
+    env = lmdb.open(output_file, map_size=args.map_size)
     tokenize_dataset(dataset=dataset,
                      tokenizer=tokenizer,
                      env=env,
