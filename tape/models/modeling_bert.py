@@ -30,7 +30,10 @@ from .modeling_utils import ProteinModel
 from .modeling_utils import prune_linear_layer
 from .modeling_utils import get_activation_fn
 from .modeling_utils import LayerNorm
-from .modeling_utils import MLMHead
+## MARK: psturmfels custom code ##
+##################################
+from .modeling_utils import MLMHead, ProfileHead
+##################################
 from .modeling_utils import ValuePredictionHead
 from .modeling_utils import SequenceClassificationHead
 from .modeling_utils import SequenceToSequenceClassificationHead
@@ -493,6 +496,43 @@ class ProteinBertForMaskedLM(ProteinBertAbstractModel):
         # (loss), prediction_scores, (hidden_states), (attentions)
         return outputs
 
+## MARK: psturmfels custom code ##
+##################################
+# The only difference between this class and the MLM model
+# is that it uses the profile head rather than the MLM head.
+@registry.register_task_model('profile_prediction', 'transformer')
+class ProteinBertForProfilePrediction(ProteinBertAbstractModel):
+    def __init__(self, config):
+        super().__init__(config)
+
+        self.bert = ProteinBertModel(config)
+        self.profile_head = ProfileHead(config.hidden_size,
+                                        config.hidden_act,
+                                        config.layer_norm_eps)
+
+        self.init_weights()
+        # self.tie_weights()
+
+    # Unlike the standard transformer, we don't tie weights here. The linear decoder
+    # outputs now map to profile probability space, rather than strictly one hot
+    # embedding space. So yeah. Not going to do that.
+
+    # def tie_weights(self):
+    #     self._tie_or_clone_weights(self.profile_head.decoder,
+    #                                self.bert.embeddings.word_embeddings)
+
+    def forward(self,
+                input_ids,
+                input_mask=None,
+                targets=None):
+        outputs = self.bert(input_ids, input_mask=input_mask)
+
+        sequence_output, pooled_output = outputs[:2]
+        # add hidden states and attention if they are here
+        outputs = self.profile_head(sequence_output, targets) + outputs[2:]
+        # (loss), prediction_scores, (hidden_states), (attentions)
+        return outputs
+##################################
 
 @registry.register_task_model('fluorescence', 'transformer')
 @registry.register_task_model('stability', 'transformer')

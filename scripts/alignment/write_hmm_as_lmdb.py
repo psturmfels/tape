@@ -65,20 +65,23 @@ def read_alignment_file(file):
     reference_line = None
     with open(file, 'r') as handle:
         for line in handle:
-            if line.startswith('#=GC RF'):
-                reference_line = line.strip().split()[-1]
-            elif not line.startswith('#') and not line.startswith('//'):
-                split_line = line.strip().split()
-                header = split_line[0]
-                group, seq_range = header.split('/')
-                uniprot_id, species = group.split('_')
-                seq_range = tuple(int(r) for r in seq_range.split('-'))
-                sequence = split_line[1]
+            try:
+                if line.startswith('#=GC RF'):
+                    reference_line = line.strip().split()[-1]
+                elif not line.startswith('#') and not line.startswith('//'):
+                    split_line = line.strip().split()
+                    header = split_line[0]
+                    group, seq_range = header.split('/')
+                    uniprot_id, species = group.split('_')
+                    seq_range = tuple(int(r) for r in seq_range.split('-'))
+                    sequence = split_line[1]
 
-                uniprot_ids.append(uniprot_id)
-                species_list.append(species)
-                sequence_ranges.append(seq_range)
-                sequences.append(sequence)
+                    uniprot_ids.append(uniprot_id)
+                    species_list.append(species)
+                    sequence_ranges.append(seq_range)
+                    sequences.append(sequence)
+            except (IndexError, ValueError) as e:
+                continue
     return uniprot_ids, species_list, sequence_ranges, sequences, reference_line
 
 def read_hmm_file(file):
@@ -321,23 +324,33 @@ def main(args=None):
                 }
                 for i in range(0, len(families), args.batch_size):
                     print(f'-----Index {i}/{len(families)}-----')
-                    family_batch = families[i:min(i + args.batch_size, len(families))]
-                    with Pool(processes=args.num_processes) as pool:
-                        batch_writes = pool.map(apply_func, family_batch)
+                    try:
+                        family_batch = families[i:min(i + args.batch_size, len(families))]
+                        with Pool(processes=args.num_processes) as pool:
+                            batch_writes = pool.map(apply_func, family_batch)
 
-                    for batch_sequences_to_write, split_list, index_list, \
-                        hmm_container, reference_line in batch_writes:
-                        print(f'Writing {len(batch_sequences_to_write)} from family {hmm_container.accession}...')
-                        batch_write_sequences(txn_dict,
-                                              count_dict,
-                                              batch_sequences_to_write,
-                                              split_list,
-                                              index_list,
-                                              hmm_container,
-                                              reference_line)
-                        for split in ['train', 'valid', 'holdout']:
-                            count_dict[split] += split_list.count(split)
-
+                        for result in batch_writes:
+                            if result is None:
+                                continue
+                            try:
+                                batch_sequences_to_write, split_list, index_list, \
+                                    hmm_container, reference_line = result
+                                print(f'Writing {len(batch_sequences_to_write)} from family {hmm_container.accession}...')
+                                batch_write_sequences(txn_dict,
+                                                      count_dict,
+                                                      batch_sequences_to_write,
+                                                      split_list,
+                                                      index_list,
+                                                      hmm_container,
+                                                      reference_line)
+                                for split in ['train', 'valid', 'holdout']:
+                                    count_dict[split] += split_list.count(split)
+                            except (TypeError, ValueError) as e:
+                                print(f'Failed to write family {hmm_container.accession} with error {e}')
+                                continue
+                    except (TypeError, ValueError) as e:
+                        print(f'Failed to write batch {i} with error {e}')
+                        continue
 
                 for split in ['train', 'valid', 'holdout']:
                     txn_dict[split].put('num_examples'.encode(),

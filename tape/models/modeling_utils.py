@@ -777,6 +777,49 @@ class MLMHead(nn.Module):
             outputs = (loss_and_metrics,) + outputs
         return outputs  # (loss), prediction_scores
 
+## MARK: psturmfels custom code ##
+##################################
+# The main differences here are that the vocab size is fixed
+# and the loss uses KL divergence.
+class ProfileHead(MLMHead):
+    def __init__(self,
+                 hidden_size: int,
+                 hidden_act: typing.Union[str, typing.Callable] = 'gelu',
+                 layer_norm_eps: float = 1e-12):
+        # This is a hard-coded hack.
+        # The vocab size of my profile dataset is 20, and
+        # I don't really feel like making this an input paramter.
+        super().__init__(hidden_size = hidden_size,
+                         vocab_size = 20,
+                         hidden_act = hidden_act,
+                         layer_norm_eps = layer_norm_eps)
+        self.loss_fct = nn.BCELoss()
+        self.softmax = nn.Softmax(dim=-1)
+
+    def forward(self, hidden_states, targets=None):
+        test = torch.zeros(4, 20, 768, dtype=torch.float32)
+        out_test = self.decoder(test)
+
+        hidden_states = self.transform(hidden_states)
+        decoded = self.decoder(hidden_states)
+        hidden_states = self.decoder(hidden_states) + self.bias
+        softmax_hidden_states = self.softmax(hidden_states)
+
+        outputs = (hidden_states,)
+        if targets is not None:
+            mask = (targets >= 0.0)
+            float_mask = mask.type(targets.dtype)
+            loss = self.loss_fct(softmax_hidden_states[mask],
+                                 targets[mask])
+
+            mae_loss = torch.sum(torch.abs((softmax_hidden_states - targets) * float_mask)) / torch.sum(float_mask)
+            metrics = {'mean_absolute_error': mae_loss}
+
+            loss_and_metrics = (loss, metrics)
+            outputs = (loss_and_metrics,) + outputs
+        return outputs  # (loss), prediction_scores
+##################################
+
 
 class ValuePredictionHead(nn.Module):
     def __init__(self, hidden_size: int, dropout: float = 0.):

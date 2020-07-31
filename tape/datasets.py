@@ -378,6 +378,47 @@ class MaskedLanguageModelingDataset(Dataset):
 
 ## MARK: psturmfels custom code ##
 ##################################
+@registry.register_task('profile_prediction')
+class ProfilePredictionDataset(MaskedLanguageModelingDataset):
+    """
+    Creates the profile prediction dataset. Leans heavily on the
+    existing code for the MLM dataset, and simply changes the
+    label to be the pre-written label in our dataset.
+    """
+    def __getitem__(self, index):
+        item = self.data[index]
+        tokens = self.tokenizer.tokenize(item['primary'])
+        tokens = self.tokenizer.add_special_tokens(tokens)
+        labels = item['profile'].astype(np.float32)
+        # Here we have to pad the labels to account for the
+        # <cls> and <sep> tokens that begin and end the sequence.
+        # We simply pad with -1.0 so that these tokens do not
+        # contribute to the output.
+        labels = np.pad(labels, ((1, 1), (0, 0)), constant_values=-1)
+
+        token_ids = np.array(
+            self.tokenizer.convert_tokens_to_ids(tokens), np.int64)
+        input_mask = np.ones_like(token_ids)
+
+        return token_ids, input_mask, labels
+
+    def collate_fn(self, batch: List[Any]) -> Dict[str, torch.Tensor]:
+        input_ids, input_mask, profile_labels = tuple(zip(*batch))
+
+        padded_input_ids = torch.from_numpy(pad_sequences(input_ids, 0))
+        padded_input_mask = torch.from_numpy(pad_sequences(input_mask, 0))
+
+        # We are abusing the pytorch KL divergence function a bit.
+        # Any target value <= 0.0 will evaluate to zero contribution towards the loss.
+        padded_profile_labels = torch.from_numpy(pad_sequences(profile_labels, -1.0))
+
+        return {'input_ids': padded_input_ids,
+                'input_mask': padded_input_mask,
+                'targets': padded_profile_labels}
+##################################
+
+## MARK: psturmfels custom code ##
+##################################
 @registry.register_task('bpe_masked_language_modeling')
 class BPEMaskedLangaugeModelingDataset(MaskedLanguageModelingDataset):
     def __init__(self,
