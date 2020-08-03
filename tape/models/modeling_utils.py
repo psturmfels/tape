@@ -797,9 +797,6 @@ class ProfileHead(MLMHead):
         self.softmax = nn.Softmax(dim=-1)
 
     def forward(self, hidden_states, targets=None):
-        test = torch.zeros(4, 20, 768, dtype=torch.float32)
-        out_test = self.decoder(test)
-
         hidden_states = self.transform(hidden_states)
         decoded = self.decoder(hidden_states)
         hidden_states = self.decoder(hidden_states) + self.bias
@@ -812,7 +809,7 @@ class ProfileHead(MLMHead):
             loss = self.loss_fct(softmax_hidden_states[mask],
                                  targets[mask])
 
-            mae_loss = torch.sum(torch.abs((softmax_hidden_states - targets) * float_mask)) / torch.sum(float_mask)
+            mae_loss = torch.sum(torch.abs((softmax_hidden_states[mask] - targets[mask]))) / torch.sum(float_mask)
             metrics = {'mean_absolute_error': mae_loss}
 
             loss_and_metrics = (loss, metrics)

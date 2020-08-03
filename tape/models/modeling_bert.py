@@ -461,6 +461,7 @@ class ProteinBertModel(ProteinBertAbstractModel):
 ##################################
 @registry.register_task_model('bpe_masked_language_modeling', 'transformer')
 @registry.register_task_model('mutation_language_modeling', 'transformer')
+@registry.register_task_model('entropy_language_modeling', 'transformer')
 ##################################
 @registry.register_task_model('masked_language_modeling', 'transformer')
 class ProteinBertForMaskedLM(ProteinBertAbstractModel):

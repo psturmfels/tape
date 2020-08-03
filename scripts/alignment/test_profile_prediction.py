@@ -35,5 +35,14 @@ def test_head():
     outputs = head(inputs)
     print(outputs)
 
+def test_datasets():
+    for split in ['train', 'holdout', 'valid']:
+        dataset = setup_dataset(task = 'profile_prediction',
+                                data_dir = '/export/home/tape/data/alignment/',
+                                split = split,
+                                tokenizer = 'iupac')
+        print(dataset.data[len(dataset) - 1])
+        print(f'Split {split} has {len(dataset)} elements')
+
 if __name__ == '__main__':
-    main()
+    test_datasets()

@@ -102,6 +102,10 @@ def create_train_parser(base_parser: argparse.ArgumentParser) -> argparse.Argume
                              "training")
     parser.add_argument('--resume_from_checkpoint', action='store_true',
                         help="whether to resume training from the checkpoint")
+    parser.add_argument('--max_sequence_length', default=None, type=int,
+                        help='Maximum sequence length. Used for filtering the dataset.')
+    parser.add_argument('--dataset_train_fraction', default=None, type=float,
+                        help='Used to subsample the training data by a fraction.')
     return parser
 
 

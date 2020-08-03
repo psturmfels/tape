@@ -46,6 +46,8 @@ def main(args=None):
         parser = create_parser()
         args = parser.parse_args()
 
+    print(f'Input from {args.input_file}')
+    print(f'Output to {args.output_file}')
     num_records = 0
     dataset = LMDBDataset(data_file=args.input_file)
     env = lmdb.open(args.output_file, map_size=args.map_size)
@@ -60,7 +62,6 @@ def main(args=None):
 
             if args.maximum_length is not None and \
                 length > args.maximum_length:
-                print(record)
                 continue
             if args.minimum_length is not None and \
                 length < args.minimum_length:
@@ -70,7 +71,8 @@ def main(args=None):
                                         record,
                                         txn)
             num_records += 1
+        txn.put('num_examples'.encode(), pickle.dumps(num_records))
     print(f'Wrote {num_records}/{len(dataset)} records to {args.output_file}')
-
+    
 if __name__ == '__main__':
     main()
