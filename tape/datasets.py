@@ -417,6 +417,38 @@ class ProfilePredictionDataset(MaskedLanguageModelingDataset):
         return {'input_ids': padded_input_ids,
                 'input_mask': padded_input_mask,
                 'targets': padded_profile_labels}
+
+@registry.register_task('joint_mlm_profile')
+class JointProfileMLMDataset(ProfilePredictionDataset):
+    def __getitem__(self, index):
+        item = self.data[index]
+        tokens = self.tokenizer.tokenize(item['primary'])
+        tokens = self.tokenizer.add_special_tokens(tokens)
+        profile = item['profile'].astype(np.float32)
+        profile = np.pad(profile, ((1, 1), (0, 0)), constant_values=-1)
+
+        masked_tokens, labels = self._apply_bert_mask(tokens)
+        masked_token_ids = np.array(
+            self.tokenizer.convert_tokens_to_ids(masked_tokens), np.int64)
+        input_mask = np.ones_like(masked_token_ids)
+
+        masked_token_ids = np.array(
+            self.tokenizer.convert_tokens_to_ids(masked_tokens), np.int64)
+
+        return masked_token_ids, input_mask, labels, profile
+
+    def collate_fn(self, batch: List[Any]) -> Dict[str, torch.Tensor]:
+        input_ids, input_mask, lm_label_ids, profile_labels = tuple(zip(*batch))
+
+        input_ids = torch.from_numpy(pad_sequences(input_ids, 0))
+        input_mask = torch.from_numpy(pad_sequences(input_mask, 0))
+        lm_label_ids = torch.from_numpy(pad_sequences(lm_label_ids, -1))
+        padded_profile_labels = torch.from_numpy(pad_sequences(profile_labels, -1.0))
+
+        return {'input_ids': input_ids,
+                'input_mask': input_mask,
+                'targets': lm_label_ids,
+                'profiles': padded_profile_labels}
 ##################################
 
 ## MARK: psturmfels custom code ##

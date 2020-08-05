@@ -94,11 +94,11 @@ def setup_dataset(task: str,
                   data_dir: typing.Union[str, Path],
                   split: str,
                   tokenizer: str,
-                  dataset_train_fraction: float = None) -> Dataset:
+                  dataset_fraction: float = None) -> Dataset:
     task_spec = registry.get_task_spec(task)
     dataset = task_spec.dataset(data_dir, split, tokenizer)  # type: ignore
-    if dataset_train_fraction is not None:
-        dataset.data._num_examples = int(dataset_train_fraction * dataset.data._num_examples)
+    if dataset_fraction is not None:
+        dataset.data._num_examples = int(dataset_fraction * dataset.data._num_examples)
     return dataset
 
 

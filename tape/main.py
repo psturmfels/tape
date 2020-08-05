@@ -106,6 +106,8 @@ def create_train_parser(base_parser: argparse.ArgumentParser) -> argparse.Argume
                         help='Maximum sequence length. Used for filtering the dataset.')
     parser.add_argument('--dataset_train_fraction', default=None, type=float,
                         help='Used to subsample the training data by a fraction.')
+    parser.add_argument('--dataset_valid_fraction', default=None, type=float,
+                        help='Used to subsample the validation data by a fraction.')
     return parser
 
 

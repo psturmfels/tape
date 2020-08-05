@@ -132,7 +132,10 @@ class BackwardRunner(ForwardRunner):
         self.max_grad_norm = max_grad_norm
         self._global_step = 0
         self._local_rank = local_rank
-        self._overflow_buf = torch.cuda.IntTensor([0])  # type: ignore
+        if 'cpu' in device.type:
+            self._overflow_buf = torch.IntTensor([0])
+        else:
+            self._overflow_buf = torch.cuda.IntTensor([0])  # type: ignore
         self.gradient_accumulation_steps = gradient_accumulation_steps
         self._delay_accumulation = fp16 and local_rank != -1
 
@@ -424,7 +427,8 @@ def run_train(model_type: str,
               patience: int = -1,
               resume_from_checkpoint: bool = False,
               max_sequence_length: int = None,
-              dataset_train_fraction: float = None) -> None:
+              dataset_train_fraction: float = None,
+              dataset_valid_fraction: float = None) -> None:
     # SETUP AND LOGGING CODE #
     input_args = locals()
     device, n_gpu, is_master = utils.setup_distributed(
@@ -443,8 +447,8 @@ def run_train(model_type: str,
     utils.setup_logging(local_rank, save_path, log_level)
     utils.set_random_seeds(seed, n_gpu)
 
-    train_dataset = utils.setup_dataset(task, data_dir, 'train', tokenizer, dataset_train_fraction=dataset_train_fraction)
-    valid_dataset = utils.setup_dataset(task, data_dir, 'valid', tokenizer)
+    train_dataset = utils.setup_dataset(task, data_dir, 'train', tokenizer, dataset_fraction=dataset_train_fraction)
+    valid_dataset = utils.setup_dataset(task, data_dir, 'valid', tokenizer, dataset_fraction=dataset_valid_fraction)
     train_loader = utils.setup_loader(
         train_dataset, batch_size, local_rank, n_gpu,
         gradient_accumulation_steps, num_workers, max_sequence_length=max_sequence_length)
@@ -519,8 +523,12 @@ def run_train(model_type: str,
         for epoch_id in range(start_epoch, num_train_epochs):
             run_train_epoch(epoch_id, train_loader, runner,
                             viz, num_log_iter, gradient_accumulation_steps)
+            logger.info(f'------Finished epoch {epoch_id}------')
+
             if eval_freq > 0 and (epoch_id + 1) % eval_freq == 0:
+                logger.info('------Running evaluation------')
                 val_loss, _ = run_valid_epoch(epoch_id, valid_loader, runner, viz, is_master)
+                logger.info('------Finished evaluation------')
                 if val_loss < best_val_loss:
                     best_val_loss = val_loss
                     num_evals_no_improvement = 0

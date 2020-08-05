@@ -6,10 +6,22 @@ See https://github.com/PetrochukM/PyTorch-NLP/
 import typing
 import math
 import operator
+import bisect
+import time
 from torch.utils.data.sampler import Sampler
 from torch.utils.data.sampler import BatchSampler
 from torch.utils.data.sampler import SubsetRandomSampler
 
+class KeyWrapper:
+    def __init__(self, iterable, key):
+        self.it = iterable
+        self.key = key
+
+    def __getitem__(self, i):
+        return self.key(self.it[i])
+
+    def __len__(self):
+        return len(self.it)
 
 class SortedSampler(Sampler):
     """ Samples elements sequentially, always in the same order.
@@ -34,9 +46,17 @@ class SortedSampler(Sampler):
             sort_keys = map(sort_key, dataset)
         else:
             sort_keys = ((i, sort_key(dataset[i])) for i in indices)
+
+        sorted_tuples = sorted(sort_keys, key=operator.itemgetter(1))
         if max_key is not None:
-            sort_keys = filter(lambda x: x[1] < max_key, sort_keys)
-        self.sorted_indices = [i for i, _ in sorted(sort_keys, key=operator.itemgetter(1))]
+            start = time.time()
+            max_index = bisect.bisect_left(KeyWrapper(sorted_tuples, key=operator.itemgetter(1)),
+                                           max_key)
+            end = time.time()
+            print(f'Kept {max_index}/{len(sorted_tuples)} sequences filtering <{max_key} length in {end-start:.4f} seconds')
+            sorted_tuples = sorted_tuples[:max_index]
+
+        self.sorted_indices = [i for i, _ in sorted_tuples]
 
     def __iter__(self):
         return iter(self.sorted_indices)
@@ -92,8 +112,10 @@ class BucketBatchSampler(BatchSampler):
     def __iter__(self):
         for bucket in self.bucket_sampler:
             sorted_sampler = SortedSampler(self.dataset, self.sort_key, indices=bucket, max_key=self.max_key)
-            for batch in SubsetRandomSampler(
-                    list(BatchSampler(sorted_sampler, self.batch_size, self.drop_last))):
+            sorted_and_batched = list(BatchSampler(sorted_sampler, self.batch_size, self.drop_last))
+            if len(sorted_and_batched) == 0:
+                continue
+            for batch in SubsetRandomSampler(sorted_and_batched):
                 yield batch
 
     def __len__(self):

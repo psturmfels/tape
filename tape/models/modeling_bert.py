@@ -533,6 +533,47 @@ class ProteinBertForProfilePrediction(ProteinBertAbstractModel):
         outputs = self.profile_head(sequence_output, targets) + outputs[2:]
         # (loss), prediction_scores, (hidden_states), (attentions)
         return outputs
+
+@registry.register_task_model('joint_mlm_profile', 'transformer')
+class ProteinBertForJointProfileAndMLM(ProteinBertAbstractModel):
+    def __init__(self, config):
+        super().__init__(config)
+
+        self.bert = ProteinBertModel(config)
+        self.mlm = MLMHead(
+            config.hidden_size, config.vocab_size, config.hidden_act, config.layer_norm_eps,
+            ignore_index=-1)
+        self.profile_head = ProfileHead(config.hidden_size,
+                                        config.hidden_act,
+                                        config.layer_norm_eps)
+        self.profile_weight = config.profile_weight
+        self.init_weights()
+        self.tie_weights()
+
+    def tie_weights(self):
+        """ Make sure we are sharing the input and output embeddings.
+            Export to TorchScript can't handle parameter sharing so we are cloning them instead.
+        """
+        self._tie_or_clone_weights(self.mlm.decoder,
+                                   self.bert.embeddings.word_embeddings)
+
+    def forward(self,
+                input_ids,
+                input_mask=None,
+                targets=None,
+                profiles=None):
+        outputs = self.bert(input_ids, input_mask=input_mask)
+
+        sequence_output, pooled_output = outputs[:2]
+
+        (mlm_loss, mlm_metrics), mlm_outputs = self.mlm(sequence_output, targets)
+        (profile_loss, profile_metrics), profile_outputs = self.profile_head(sequence_output, profiles)
+
+        total_loss = mlm_loss + self.profile_weight * profile_loss
+        total_metrics = {**profile_metrics, **mlm_metrics}
+
+        outputs = ((total_loss, total_metrics), mlm_outputs, sequence_output, pooled_output)
+        return outputs
 ##################################
 
 @registry.register_task_model('fluorescence', 'transformer')
