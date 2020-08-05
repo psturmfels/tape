@@ -94,9 +94,10 @@ def setup_dataset(task: str,
                   data_dir: typing.Union[str, Path],
                   split: str,
                   tokenizer: str,
-                  dataset_fraction: float = None) -> Dataset:
+                  dataset_fraction: float = None,
+                  max_sequence_length: int = None) -> Dataset:
     task_spec = registry.get_task_spec(task)
-    dataset = task_spec.dataset(data_dir, split, tokenizer)  # type: ignore
+    dataset = task_spec.dataset(data_dir, split, tokenizer, max_sequence_length=max_sequence_length)  # type: ignore
     if dataset_fraction is not None:
         dataset.data._num_examples = int(dataset_fraction * dataset.data._num_examples)
     return dataset
@@ -108,14 +109,13 @@ def setup_loader(dataset: Dataset,
                  n_gpu: int,
                  gradient_accumulation_steps: int,
                  num_workers: int,
-                 mask_fraction: typing.Optional[float] = None,
-                 max_sequence_length: int = None) -> DataLoader:
+                 mask_fraction: typing.Optional[float] = None,) -> DataLoader:
     sampler = DistributedSampler(dataset) if local_rank != -1 else RandomSampler(dataset)
     batch_size = get_effective_batch_size(
         batch_size, local_rank, n_gpu, gradient_accumulation_steps) * n_gpu
     # WARNING: this will fail if the primary sequence is not the first thing the dataset returns
     batch_sampler = BucketBatchSampler(
-        sampler, batch_size, False, lambda x: len(x[0]), dataset, max_key=max_sequence_length)
+        sampler, batch_size, False, lambda x: len(x[0]), dataset)
 
     ## MARK: psturmfels custom code ##
     ##################################

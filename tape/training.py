@@ -447,14 +447,24 @@ def run_train(model_type: str,
     utils.setup_logging(local_rank, save_path, log_level)
     utils.set_random_seeds(seed, n_gpu)
 
-    train_dataset = utils.setup_dataset(task, data_dir, 'train', tokenizer, dataset_fraction=dataset_train_fraction)
-    valid_dataset = utils.setup_dataset(task, data_dir, 'valid', tokenizer, dataset_fraction=dataset_valid_fraction)
+    train_dataset = utils.setup_dataset(task,
+                                        data_dir,
+                                        'train',
+                                        tokenizer,
+                                        dataset_fraction=dataset_train_fraction,
+                                        max_sequence_length=max_sequence_length)
+    valid_dataset = utils.setup_dataset(task,
+                                        data_dir,
+                                        'valid',
+                                        tokenizer,
+                                        dataset_fraction=dataset_valid_fraction,
+                                        max_sequence_length=max_sequence_length)
     train_loader = utils.setup_loader(
         train_dataset, batch_size, local_rank, n_gpu,
-        gradient_accumulation_steps, num_workers, max_sequence_length=max_sequence_length)
+        gradient_accumulation_steps, num_workers)
     valid_loader = utils.setup_loader(
         valid_dataset, batch_size, local_rank, n_gpu,
-        gradient_accumulation_steps, num_workers, max_sequence_length=max_sequence_length)
+        gradient_accumulation_steps, num_workers)
 
     num_train_optimization_steps = utils.get_num_train_optimization_steps(
         train_dataset, batch_size, num_train_epochs)

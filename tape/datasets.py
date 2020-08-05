@@ -303,7 +303,8 @@ class MaskedLanguageModelingDataset(Dataset):
                  data_path: Union[str, Path],
                  split: str,
                  tokenizer: Union[str, TAPETokenizer] = 'iupac',
-                 in_memory: bool = False):
+                 in_memory: bool = False,
+                 max_sequence_length: int = None):
         super().__init__()
         if split not in ('train', 'valid', 'holdout'):
             raise ValueError(
@@ -316,13 +317,31 @@ class MaskedLanguageModelingDataset(Dataset):
         data_path = Path(data_path)
         data_file = f'pfam/pfam_{split}.lmdb'
         self.data = dataset_factory(data_path / data_file, in_memory)
+        # Subtract by two for start and end tokens
+        self.max_sequence_length = max_sequence_length - 2
 
     def __len__(self) -> int:
         return len(self.data)
 
+    def _truncate_tokens(self, tokens, labels=None):
+        if self.max_sequence_length is not None and \
+            len(tokens) > self.max_sequence_length:
+            maximum_random_start = len(tokens) - self.max_sequence_length
+            random_start = np.random.randint(low=0, high=maximum_random_start)
+            if labels is None:
+                return tokens[random_start:random_start + self.max_sequence_length]
+            else:
+                return tokens[random_start:random_start + self.max_sequence_length], \
+                       labels[random_start:random_start + self.max_sequence_length]
+        elif labels is None:
+            return tokens
+        else:
+            return tokens, labels
+
     def __getitem__(self, index):
         item = self.data[index]
         tokens = self.tokenizer.tokenize(item['primary'])
+        tokens = self._truncate_tokens(tokens)
         tokens = self.tokenizer.add_special_tokens(tokens)
         masked_tokens, labels = self._apply_bert_mask(tokens)
         masked_token_ids = np.array(
@@ -390,12 +409,14 @@ class ProfilePredictionDataset(MaskedLanguageModelingDataset):
     def __getitem__(self, index):
         item = self.data[index]
         tokens = self.tokenizer.tokenize(item['primary'])
-        tokens = self.tokenizer.add_special_tokens(tokens)
         labels = item['profile'].astype(np.float32)
+
+        tokens, labels = self._truncate_tokens(tokens, labels)
         # Here we have to pad the labels to account for the
         # <cls> and <sep> tokens that begin and end the sequence.
         # We simply pad with -1.0 so that these tokens do not
         # contribute to the output.
+        tokens = self.tokenizer.add_special_tokens(tokens)
         labels = np.pad(labels, ((1, 1), (0, 0)), constant_values=-1)
 
         token_ids = np.array(
@@ -423,8 +444,11 @@ class JointProfileMLMDataset(ProfilePredictionDataset):
     def __getitem__(self, index):
         item = self.data[index]
         tokens = self.tokenizer.tokenize(item['primary'])
-        tokens = self.tokenizer.add_special_tokens(tokens)
         profile = item['profile'].astype(np.float32)
+
+        tokens, profile = self._truncate_tokens(tokens, profile)
+
+        tokens = self.tokenizer.add_special_tokens(tokens)
         profile = np.pad(profile, ((1, 1), (0, 0)), constant_values=-1)
 
         masked_tokens, labels = self._apply_bert_mask(tokens)
