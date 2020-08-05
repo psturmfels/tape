@@ -7,7 +7,6 @@ import typing
 import math
 import operator
 import bisect
-import time
 from torch.utils.data.sampler import Sampler
 from torch.utils.data.sampler import BatchSampler
 from torch.utils.data.sampler import SubsetRandomSampler
@@ -49,11 +48,8 @@ class SortedSampler(Sampler):
 
         sorted_tuples = sorted(sort_keys, key=operator.itemgetter(1))
         if max_key is not None:
-            start = time.time()
             max_index = bisect.bisect_left(KeyWrapper(sorted_tuples, key=operator.itemgetter(1)),
                                            max_key)
-            end = time.time()
-            print(f'Kept {max_index}/{len(sorted_tuples)} sequences filtering <{max_key} length in {end-start:.4f} seconds')
             sorted_tuples = sorted_tuples[:max_index]
 
         self.sorted_indices = [i for i, _ in sorted_tuples]
