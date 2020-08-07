@@ -109,13 +109,14 @@ def setup_loader(dataset: Dataset,
                  n_gpu: int,
                  gradient_accumulation_steps: int,
                  num_workers: int,
-                 mask_fraction: typing.Optional[float] = None,) -> DataLoader:
+                 mask_fraction: typing.Optional[float] = None,
+                 precomputed_key_file: str = None) -> DataLoader:
     sampler = DistributedSampler(dataset) if local_rank != -1 else RandomSampler(dataset)
     batch_size = get_effective_batch_size(
         batch_size, local_rank, n_gpu, gradient_accumulation_steps) * n_gpu
     # WARNING: this will fail if the primary sequence is not the first thing the dataset returns
     batch_sampler = BucketBatchSampler(
-        sampler, batch_size, False, lambda x: len(x[0]), dataset)
+        sampler, batch_size, False, lambda x: len(x[0]), dataset, precomputed_key_file=precomputed_key_file)
 
     ## MARK: psturmfels custom code ##
     ##################################

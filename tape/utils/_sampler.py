@@ -7,6 +7,7 @@ import typing
 import math
 import operator
 import bisect
+import pickle
 from torch.utils.data.sampler import Sampler
 from torch.utils.data.sampler import BatchSampler
 from torch.utils.data.sampler import SubsetRandomSampler
@@ -88,16 +89,27 @@ class BucketBatchSampler(BatchSampler):
                  drop_last,
                  sort_key,
                  dataset,
-                 bucket_size_multiplier=100,):
+                 bucket_size_multiplier=100,
+                 precomputed_key_file=None):
         super().__init__(sampler, batch_size, drop_last)
         self.sort_key = sort_key
         self.dataset = dataset
         self.bucket_sampler = BatchSampler(
             sampler, min(batch_size * bucket_size_multiplier, len(sampler)), False)
+        if precomputed_key_file is not None:
+            with open(precomputed_key_file, 'rb') as handle:
+                self.precomputed_keys = pickle.load(handle)
+        else:
+            self.precomputed_keys = None
 
     def __iter__(self):
         for bucket in self.bucket_sampler:
-            sorted_sampler = SortedSampler(self.dataset, self.sort_key, indices=bucket)
+            if self.precomputed_keys is not None:
+                sorted_sampler = SortedSampler(dataset=self.precomputed_keys,
+                                               sort_key=lambda x: x,
+                                               indices=bucket)
+            else:
+                sorted_sampler = SortedSampler(self.dataset, self.sort_key, indices=bucket)
             count = 0
             for batch in SubsetRandomSampler(list(BatchSampler(sorted_sampler, self.batch_size, self.drop_last))):
                 count += 1

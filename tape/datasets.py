@@ -9,7 +9,9 @@ import random
 ##################################
 import urllib
 import os
+import sys
 import pandas as pd
+import pickle
 from io import StringIO
 from scipy.special import softmax
 ##################################
@@ -23,6 +25,7 @@ from scipy.spatial.distance import pdist, squareform
 
 from .tokenizers import TAPETokenizer, BPETokenizer
 from .registry import registry
+from .utils import hmm
 
 logger = logging.getLogger(__name__)
 
@@ -318,7 +321,10 @@ class MaskedLanguageModelingDataset(Dataset):
         data_file = f'pfam/pfam_{split}.lmdb'
         self.data = dataset_factory(data_path / data_file, in_memory)
         # Subtract by two for start and end tokens
-        self.max_sequence_length = max_sequence_length - 2
+        if max_sequence_length is not None:
+            self.max_sequence_length = max_sequence_length - 2
+        else:
+            self.max_sequence_length = None
 
     def __len__(self) -> int:
         return len(self.data)
@@ -406,10 +412,71 @@ class ProfilePredictionDataset(MaskedLanguageModelingDataset):
     existing code for the MLM dataset, and simply changes the
     label to be the pre-written label in our dataset.
     """
+    def __init__(self,
+                 data_path: Union[str, Path],
+                 split: str,
+                 tokenizer: Union[str, TAPETokenizer] = 'iupac',
+                 in_memory: bool = False,
+                 max_sequence_length: int = None,
+                 hmm_dict_file: str = '/export/home/tape/data/alignment/pfam/hmm/hmm_dict.pkl'):
+        super().__init__(data_path=data_path,
+                         split=split,
+                         tokenizer=tokenizer,
+                         in_memory=in_memory,
+                         max_sequence_length=max_sequence_length)
+        self.hmm_dict = None
+        if hmm_dict_file is not None:
+            try:
+                print(f'Loading hmm dict file {hmm_dict_file}...')
+                sys.modules['hmm'] = hmm
+                with open(hmm_dict_file, 'rb') as handle:
+                    self.hmm_dict = pickle.load(handle)
+                del sys.modules['hmm']
+            except (FileNotFoundError, KeyError) as e:
+                print(f'Failed to load hmm dict with error {e}.')
+
+    def _get_label_from_indices(self, indices, label_type, accession):
+        try:
+            hmm_container = self.hmm_dict[accession]
+        except KeyError:
+            labels = np.full((len(indices), 20), fill_value=-1.0, dtype=np.float32)
+            return labels
+
+        labels = []
+        for index, is_match in zip(indices, label_type):
+            if label_type: # Match state
+                labels.append(hmm_container.probabilities['match'][index])
+            elif index == -1:
+                labels.append(hmm_container.probabilities['compo_insertion'])
+            else:
+                labels.append(hmm_container.probabilities['insertion'][index - 1])
+        labels = np.array(labels).astype(np.float32)
+        return labels
+
+    def _get_profile(self, item):
+        profile = None
+        if self.hmm_dict is not None:
+            try:
+                accession       = item['accession']
+                profile_indices = item['profile_indices']
+                label_type      = item['label_type']
+                profile = self._get_label_from_indices(indices=profile_indices,
+                                                       label_type=label_type,
+                                                       accession=accession)
+            except KeyError:
+                pass
+
+        if profile is None:
+            try:
+                profile = item['profile'].astype(np.float32)
+            except KeyError:
+                profile = np.full((len(indices), 20), fill_value=-1.0, dtype=np.float32)
+        return profile
+
     def __getitem__(self, index):
         item = self.data[index]
         tokens = self.tokenizer.tokenize(item['primary'])
-        labels = item['profile'].astype(np.float32)
+        labels = self._get_profile(item)
 
         tokens, labels = self._truncate_tokens(tokens, labels)
         # Here we have to pad the labels to account for the
@@ -444,7 +511,7 @@ class JointProfileMLMDataset(ProfilePredictionDataset):
     def __getitem__(self, index):
         item = self.data[index]
         tokens = self.tokenizer.tokenize(item['primary'])
-        profile = item['profile'].astype(np.float32)
+        profile = self._get_profile(item)
 
         tokens, profile = self._truncate_tokens(tokens, profile)
 

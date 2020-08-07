@@ -428,7 +428,9 @@ def run_train(model_type: str,
               resume_from_checkpoint: bool = False,
               max_sequence_length: int = None,
               dataset_train_fraction: float = None,
-              dataset_valid_fraction: float = None) -> None:
+              dataset_valid_fraction: float = None,
+              train_key_file: str = None,
+              valid_key_file: str = None) -> None:
     # SETUP AND LOGGING CODE #
     input_args = locals()
     device, n_gpu, is_master = utils.setup_distributed(
@@ -461,10 +463,12 @@ def run_train(model_type: str,
                                         max_sequence_length=max_sequence_length)
     train_loader = utils.setup_loader(
         train_dataset, batch_size, local_rank, n_gpu,
-        gradient_accumulation_steps, num_workers)
+        gradient_accumulation_steps, num_workers,
+        precomputed_key_file=train_key_file)
     valid_loader = utils.setup_loader(
         valid_dataset, batch_size, local_rank, n_gpu,
-        gradient_accumulation_steps, num_workers)
+        gradient_accumulation_steps, num_workers,
+        precomputed_key_file=valid_key_file)
 
     num_train_optimization_steps = utils.get_num_train_optimization_steps(
         train_dataset, batch_size, num_train_epochs)

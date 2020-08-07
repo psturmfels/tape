@@ -108,6 +108,10 @@ def create_train_parser(base_parser: argparse.ArgumentParser) -> argparse.Argume
                         help='Used to subsample the training data by a fraction.')
     parser.add_argument('--dataset_valid_fraction', default=None, type=float,
                         help='Used to subsample the validation data by a fraction.')
+    parser.add_argument('--train_key_file', default=None, type=str,
+                        help='Pickle file containing precomputed sequence lengths.')
+    parser.add_argument('--valid_key_file', default=None, type=str,
+                        help='Pickle file containing precomputed sequence lengths.')
     return parser
 
 

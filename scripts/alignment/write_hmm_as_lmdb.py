@@ -1,5 +1,5 @@
 import os
-import sys; sys.path.append('/export/home/tape/scripts/alignment')
+import sys; sys.path[0] = '/export/home/tape'; sys.path.append('/export/home/tape/scripts/alignment')
 import argparse
 import numpy as np
 import lmdb
@@ -7,8 +7,8 @@ import pickle
 from multiprocessing import Pool
 from functools import partial
 from tqdm import tqdm
-from hmm import HMMContainer, HMMReader
 
+from tape.utils.hmm import HMMContainer, HMMReader
 from tape.datasets import LMDBDataset
 from tape.utils import setup_dataset
 
@@ -55,6 +55,9 @@ def create_parser():
                         default=1e+13,
                         type=int,
                         help='LMDB write parameter.')
+    parser.add_argument('--write_indices',
+                        action='store_true',
+                        help='Set to true to write indices rather than full profiles')
     return parser
 
 def read_alignment_file(file):
@@ -116,19 +119,72 @@ def get_label_from_hmm(reference_line, sequence, hmm_container):
     labels = np.array(labels)
     return labels, stripped_sequence
 
+def get_label_as_indices_from_hmm(reference_line,
+                                  sequence,
+                                  hmm_container):
+    indices = []
+    label_type = [] # True for match, false for insertion
+    stripped_sequence = ''
+
+    current_match_index = 0
+    for index, character in enumerate(sequence):
+        if character == '-':
+            current_match_index += 1
+        elif reference_line[index] == 'M':
+            # Note: map index is 1-indexed, not 0-indexed
+            assert index == hmm_container.map_index[current_match_index] - 1
+            indices.append(current_match_index)
+            label_type.append(True)
+            current_match_index += 1
+            stripped_sequence += character.upper()
+        elif character.islower():
+            stripped_sequence += character.upper()
+            label_type.append(False)
+            indices.append(current_match_index - 1)
+        else:
+            continue
+    return indices, label_type, stripped_sequence
+
+def get_label_from_indices(indices, label_type, hmm_container):
+    labels = []
+    for index, is_match in zip(indices, label_type):
+        if label_type: # Match state
+            labels.append(hmm_container.probabilities['match'][index])
+        elif index == -1:
+            labels.append(hmm_container.probabilities['compo_insertion'])
+        else:
+            labels.append(hmm_container.probabilities['insertion'][index - 1])
+    labels = np.array(labels)
+    return labels
+
 def write_sequence(txn,
                    key,
                    dataset_index,
                    reference_line,
                    raw_sequence,
-                   hmm_container):
-    label, sequence = get_label_from_hmm(reference_line, raw_sequence, hmm_container)
-    data = {
-        'primary': sequence,
-        'profile': label,
-        'protein_length': len(sequence),
-        'dataset_index': int(dataset_index)
-    }
+                   hmm_container,
+                   write_indices=False):
+    if write_indices:
+        indices, label_type, sequence = get_label_as_indices_from_hmm(reference_line,
+                                                                      raw_sequence,
+                                                                      hmm_container)
+        data = {
+            'primary': sequence,
+            'profile_indices': indices,
+            'label_type': label_type,
+            'accession': hmm_container.accession,
+            'protein_length': len(sequence),
+            'dataset_index': int(dataset_index)
+        }
+    else:
+        label, sequence = get_label_from_hmm(reference_line, raw_sequence, hmm_container)
+        data = {
+            'primary': sequence,
+            'profile': label,
+            'protein_length': len(sequence),
+            'dataset_index': int(dataset_index)
+        }
+
     txn.put(str(key).encode(), pickle.dumps(data))
 
 def batch_write_sequences(txn_dict,
@@ -137,7 +193,8 @@ def batch_write_sequences(txn_dict,
                           split_list,
                           index_list,
                           hmm_container,
-                          reference_line):
+                          reference_line,
+                          write_indices=False):
     if len(batch_sequences_to_write) == 0:
         return
 
@@ -154,7 +211,8 @@ def batch_write_sequences(txn_dict,
                        dataset_index,
                        reference_line,
                        sequence,
-                       hmm_container)
+                       hmm_container,
+                       write_indices)
         local_counts[split] += 1
 
 def cross_reference_indices(mapping,
@@ -342,7 +400,8 @@ def main(args=None):
                                                       split_list,
                                                       index_list,
                                                       hmm_container,
-                                                      reference_line)
+                                                      reference_line,
+                                                      args.write_indices)
                                 for split in ['train', 'valid', 'holdout']:
                                     count_dict[split] += split_list.count(split)
                             except (TypeError, ValueError) as e:

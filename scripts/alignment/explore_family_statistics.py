@@ -7,7 +7,7 @@ from collections import Counter
 from tqdm import tqdm
 from scipy.stats import describe
 
-from hmm import HMMContainer, HMMReader
+from tape.utils.hmm import HMMContainer, HMMReader
 from tape.datasets import LMDBDataset
 
 def create_parser():
