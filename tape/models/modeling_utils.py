@@ -793,26 +793,39 @@ class ProfileHead(MLMHead):
                          vocab_size = 20,
                          hidden_act = hidden_act,
                          layer_norm_eps = layer_norm_eps)
-        self.loss_fct = nn.BCELoss()
+        self.bce_loss_fc = nn.BCELoss()
         self.softmax = nn.Softmax(dim=-1)
+        self.log_softmax = nn.LogSoftmax(dim=-1)
+        self.kl_loss_fc = nn.KLDivLoss(reduction='batchmean')
 
     def forward(self, hidden_states, targets=None):
         hidden_states = self.transform(hidden_states)
         decoded = self.decoder(hidden_states)
         hidden_states = self.decoder(hidden_states) + self.bias
-        softmax_hidden_states = self.softmax(hidden_states)
 
         outputs = (hidden_states,)
         if targets is not None:
-            mask = (targets >= 0.0)
-            float_mask = mask.type(targets.dtype)
-            loss = self.loss_fct(softmax_hidden_states[mask],
-                                 targets[mask])
+            # Squash into (batch_size * sequence_length, vocab_size) shaped tensors
+            squashed_states  = hidden_states.view(-1, hidden_states.shape[-1])
+            squashed_targets = targets.view(-1, targets.shape[-1])
 
-            mae_loss = torch.sum(torch.abs((softmax_hidden_states[mask] - targets[mask]))) / torch.sum(float_mask)
-            metrics = {'mean_absolute_error': mae_loss}
+            # Compute positions to ignore
+            batch_min_targets, _ = torch.min(squashed_targets, dim=-1)
+            batch_mask = batch_min_targets >= 0
 
-            loss_and_metrics = (loss, metrics)
+            # Compute softmax functions over squashed tensors
+            softmax_hidden_states = self.softmax(squashed_states)
+            log_softmax_states = self.log_softmax(squashed_states)
+
+            # The loss only looks at valid indices now.
+            bce_loss = self.bce_loss_fc(softmax_hidden_states[batch_mask],
+                                        squashed_targets[batch_mask])
+            kl_loss  = self.kl_loss_fc(log_softmax_states[batch_mask],
+                                       squashed_targets[batch_mask])
+            metrics = {'kl_divergence': kl_loss,
+                       'binary_cross_entropy': bce_loss}
+
+            loss_and_metrics = (kl_loss, metrics)
             outputs = (loss_and_metrics,) + outputs
         return outputs  # (loss), prediction_scores
 ##################################

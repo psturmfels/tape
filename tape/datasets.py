@@ -564,7 +564,7 @@ class BPEMaskedLangaugeModelingDataset(MaskedLanguageModelingDataset):
                          in_memory=in_memory)
 
 @registry.register_task('entropy_language_modeling')
-class EntropyLanguageModelingDataset(MaskedLanguageModelingDataset):
+class EntropyLanguageModelingDataset(ProfilePredictionDataset):
     def _profile_probabilities(self, array, expected_count=0.15, axis=1):
         # A bit redundant here, but eh
         array[array <= 0.0] = np.nan
@@ -577,9 +577,11 @@ class EntropyLanguageModelingDataset(MaskedLanguageModelingDataset):
     def __getitem__(self, index):
         item = self.data[index]
         tokens = self.tokenizer.tokenize(item['primary'])
-        tokens = self.tokenizer.add_special_tokens(tokens)
+        profile = self._get_profile(item)
 
-        profile = item['profile'].astype(np.float32)
+        tokens, profile = self._truncate_tokens(tokens, profile)
+
+        tokens = self.tokenizer.add_special_tokens(tokens)
         profile = np.pad(profile, ((1, 1), (0, 0)), constant_values=-1)
 
         masked_tokens, labels = self._apply_bert_mask(tokens, profile)
@@ -590,7 +592,22 @@ class EntropyLanguageModelingDataset(MaskedLanguageModelingDataset):
         masked_token_ids = np.array(
             self.tokenizer.convert_tokens_to_ids(masked_tokens), np.int64)
 
-        return masked_token_ids, input_mask, labels, item.get('clan', None), item.get('family', None)
+        return masked_token_ids, input_mask, labels
+
+    def collate_fn(self, batch: List[Any]) -> Dict[str, torch.Tensor]:
+        input_ids, input_mask, lm_label_ids = tuple(zip(*batch))
+
+        input_ids = torch.from_numpy(pad_sequences(input_ids, 0))
+        input_mask = torch.from_numpy(pad_sequences(input_mask, 0))
+        # ignore_index is -1
+        lm_label_ids = torch.from_numpy(pad_sequences(lm_label_ids, -1))
+
+        # clan = torch.LongTensor(clan)  # type: ignore
+        # family = torch.LongTensor(family)  # type: ignore
+
+        return {'input_ids': input_ids,
+                'input_mask': input_mask,
+                'targets': lm_label_ids}
 
     def _apply_bert_mask(self,
                          tokens: List[str],
