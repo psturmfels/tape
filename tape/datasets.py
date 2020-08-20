@@ -853,7 +853,8 @@ class RemoteHomologyDataset(Dataset):
                  data_path: Union[str, Path],
                  split: str,
                  tokenizer: Union[str, TAPETokenizer] = 'iupac',
-                 in_memory: bool = False):
+                 in_memory: bool = False,
+                 max_sequence_length: int = None):
 
         if split not in ('train', 'valid', 'test_fold_holdout',
                          'test_family_holdout', 'test_superfamily_holdout'):
@@ -868,12 +869,35 @@ class RemoteHomologyDataset(Dataset):
         data_file = f'remote_homology/remote_homology_{split}.lmdb'
         self.data = dataset_factory(data_path / data_file, in_memory)
 
+        if max_sequence_length is not None:
+            self.max_sequence_length = max_sequence_length - 2
+        else:
+            self.max_sequence_length = None
+        self.split = split
+
+    def _truncate_tokens(self, tokens):
+        if self.max_sequence_length is not None and \
+            len(tokens) > self.max_sequence_length:
+            if self.split == 'train':
+                maximum_random_start = len(tokens) - self.max_sequence_length
+                random_start = np.random.randint(low=0, high=maximum_random_start)
+            else:
+                random_start = 0
+            return tokens[random_start:random_start + self.max_sequence_length]
+        return tokens
+
     def __len__(self) -> int:
         return len(self.data)
 
     def __getitem__(self, index: int):
         item = self.data[index]
-        token_ids = self.tokenizer.encode(item['primary'])
+
+        tokens = self.tokenizer.tokenize(item['primary'])
+        tokens = self._truncate_tokens(tokens)
+        tokens = self.tokenizer.add_special_tokens(tokens)
+        token_ids = self.tokenizer.convert_tokens_to_ids(tokens)
+        token_ids = np.array(token_ids, np.int64)
+
         input_mask = np.ones_like(token_ids)
         return token_ids, input_mask, item['fold_label']
 
@@ -895,7 +919,8 @@ class ProteinnetDataset(Dataset):
                  data_path: Union[str, Path],
                  split: str,
                  tokenizer: Union[str, TAPETokenizer] = 'iupac',
-                 in_memory: bool = False):
+                 in_memory: bool = False,
+                 max_sequence_length: int = None):
 
         if split not in ('train', 'train_unfiltered', 'valid', 'test'):
             raise ValueError(f"Unrecognized split: {split}. Must be one of "
@@ -909,17 +934,47 @@ class ProteinnetDataset(Dataset):
         data_file = f'proteinnet/proteinnet_{split}.lmdb'
         self.data = dataset_factory(data_path / data_file, in_memory)
 
+        if max_sequence_length is not None:
+            self.max_sequence_length = max_sequence_length - 2
+        else:
+            self.max_sequence_length = None
+        self.split = split
+
     def __len__(self) -> int:
         return len(self.data)
 
+    def _truncate_tokens(self, tokens, labels, valid_mask):
+        if self.max_sequence_length is not None and \
+            len(tokens) > self.max_sequence_length:
+            if self.split == 'train':
+                maximum_random_start = len(tokens) - self.max_sequence_length
+                random_start = np.random.randint(low=0, high=maximum_random_start)
+            else:
+                random_start = 0
+
+            return tokens[random_start:random_start + self.max_sequence_length], \
+                   labels[random_start:random_start + self.max_sequence_length], \
+                   valid_mask[random_start:random_start + self.max_sequence_length]
+        else:
+            return tokens, labels, valid_mask
+
     def __getitem__(self, index: int):
         item = self.data[index]
-        protein_length = len(item['primary'])
-        token_ids = self.tokenizer.encode(item['primary'])
+
+        tokens = self.tokenizer.tokenize(item['primary'])
+        tertiary_structure = item['tertiary']
+        valid_mask = item['valid_mask']
+
+        tokens, tertiary_structure, valid_mask = self._truncate_tokens(tokens,
+                                                                       tertiary_structure,
+                                                                       valid_mask)
+        protein_length = len(tokens)
+        tokens = self.tokenizer.add_special_tokens(tokens)
+        token_ids = self.tokenizer.convert_tokens_to_ids(tokens)
+        token_ids = np.array(token_ids, np.int64)
         input_mask = np.ones_like(token_ids)
 
-        valid_mask = item['valid_mask']
-        contact_map = np.less(squareform(pdist(item['tertiary'])), 8.0).astype(np.int64)
+        contact_map = np.less(squareform(pdist(tertiary_structure)), 8.0).astype(np.int64)
 
         yind, xind = np.indices(contact_map.shape)
         invalid_mask = ~(valid_mask[:, None] & valid_mask[None, :])
@@ -948,7 +1003,8 @@ class SecondaryStructureDataset(Dataset):
                  data_path: Union[str, Path],
                  split: str,
                  tokenizer: Union[str, TAPETokenizer] = 'iupac',
-                 in_memory: bool = False):
+                 in_memory: bool = False,
+                 max_sequence_length: int = None):
 
         if split not in ('train', 'valid', 'casp12', 'ts115', 'cb513'):
             raise ValueError(f"Unrecognized split: {split}. Must be one of "
@@ -962,17 +1018,48 @@ class SecondaryStructureDataset(Dataset):
         data_file = f'secondary_structure/secondary_structure_{split}.lmdb'
         self.data = dataset_factory(data_path / data_file, in_memory)
 
+        if max_sequence_length is not None:
+            self.max_sequence_length = max_sequence_length - 2
+        else:
+            self.max_sequence_length = None
+        self.split = split
+
     def __len__(self) -> int:
         return len(self.data)
 
+    def _truncate_tokens(self, tokens, labels=None):
+        if self.max_sequence_length is not None and \
+            len(tokens) > self.max_sequence_length:
+            if self.split == 'train':
+                maximum_random_start = len(tokens) - self.max_sequence_length
+                random_start = np.random.randint(low=0, high=maximum_random_start)
+            else:
+                random_start = 0
+
+            if labels is None:
+                return tokens[random_start:random_start + self.max_sequence_length]
+            else:
+                return tokens[random_start:random_start + self.max_sequence_length], \
+                       labels[random_start:random_start + self.max_sequence_length]
+        elif labels is None:
+            return tokens
+        else:
+            return tokens, labels
+
     def __getitem__(self, index: int):
         item = self.data[index]
-        token_ids = self.tokenizer.encode(item['primary'])
-        input_mask = np.ones_like(token_ids)
-
-        # pad with -1s because of cls/sep tokens
+        tokens = self.tokenizer.tokenize(item['primary'])
         labels = np.asarray(item['ss3'], np.int64)
+
+        tokens, labels = self._truncate_tokens(tokens, labels)
+        tokens = self.tokenizer.add_special_tokens(tokens)
+        # pad with -1s because of cls/sep tokens
         labels = np.pad(labels, (1, 1), 'constant', constant_values=-1)
+
+        token_ids = self.tokenizer.convert_tokens_to_ids(tokens)
+        token_ids = np.array(token_ids, np.int64)
+
+        input_mask = np.ones_like(token_ids)
 
         return token_ids, input_mask, labels
 

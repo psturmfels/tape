@@ -1,4 +1,6 @@
-*.DS_Store
+*.csv
+*.ipynb
+.DS_Store
 *.yaml
 data/
 logs/

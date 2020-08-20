@@ -97,7 +97,10 @@ def setup_dataset(task: str,
                   dataset_fraction: float = None,
                   max_sequence_length: int = None) -> Dataset:
     task_spec = registry.get_task_spec(task)
-    dataset = task_spec.dataset(data_dir, split, tokenizer, max_sequence_length=max_sequence_length)  # type: ignore
+    if max_sequence_length is not None:
+        dataset = task_spec.dataset(data_dir, split, tokenizer, max_sequence_length=max_sequence_length)  # type: ignore
+    else:
+        dataset = task_spec.dataset(data_dir, split, tokenizer)
     if dataset_fraction is not None:
         dataset.data._num_examples = int(dataset_fraction * dataset.data._num_examples)
     return dataset

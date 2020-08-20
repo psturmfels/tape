@@ -134,9 +134,11 @@ def create_eval_parser(base_parser: argparse.ArgumentParser) -> argparse.Argumen
                         help='Which split to run on')
     ## MARK: psturmfels custom code ##
     ##################################
-    parser.add_argment('--mask_fraction', default=None,
-                       type=float,
-                       help='Percentage of tokens to randomly '
+    parser.add_argument('--max_sequence_length', default=None, type=int,
+                        help='Maximum sequence length. Used for filtering the dataset.')
+    parser.add_argument('--mask_fraction', default=None,
+                        type=float,
+                        help='Percentage of tokens to randomly '
                             'mask during evaluation')
     ##################################
     return parser

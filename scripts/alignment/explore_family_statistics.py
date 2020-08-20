@@ -52,6 +52,10 @@ def get_profile_list(profile_dir):
     profile_list = set(profile_list)
     return profile_list
 
+def get_profile_intersections():
+
+    for item in tqdm(dataset, total=len(dataset)):
+
 def compute_missing_profiles(data_dir,
                              split,
                              profile_dir):
