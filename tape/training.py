@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import inspect
 import pickle as pkl
+import numpy as np
 
 from tqdm import tqdm
 import torch
@@ -392,8 +393,21 @@ def run_eval_epoch(eval_loader: DataLoader,
         loss, metrics, outputs = runner.forward(batch, return_outputs=True)  # type: ignore
         predictions = outputs[1].cpu().numpy()
         targets = batch['targets'].cpu().numpy()
-        for pred, target in zip(predictions, targets):
-            save_outputs.append({'prediction': pred, 'target': target})
+
+        ## MARK: psturmfels custom code ##
+        ##################################
+        if 'protein_length' in batch:
+            protein_lengths = batch['protein_length'].cpu().numpy()
+        else:
+            stop_index = 3
+            input_ids = batch['input_ids'].cpu().numpy()
+            protein_lengths = [np.where(row == stop_index)[0][0] -1 for row in input_ids]
+
+        for pred, target, length in zip(predictions, targets, protein_lengths):
+            save_outputs.append({'prediction': pred,
+                                 'target': target,
+                                 'length': length})
+        ##################################
 
     return save_outputs
 
@@ -589,6 +603,7 @@ def run_eval(model_type: str,
              metrics: typing.Tuple[str, ...] = (),
              ## MARK: psturmfels custom code ##
              ##################################
+             max_sequence_length: typing.Optional[int] = None,
              mask_fraction: typing.Optional[float] = None,
              ##################################
              log_level: typing.Union[str, int] = logging.INFO) -> typing.Dict[str, float]:
@@ -609,7 +624,8 @@ def run_eval(model_type: str,
 
     runner = ForwardRunner(model, device, n_gpu)
     runner.initialize_distributed_model()
-    valid_dataset = utils.setup_dataset(task, data_dir, split, tokenizer)
+    valid_dataset = utils.setup_dataset(task, data_dir, split, tokenizer,
+                                        max_sequence_length=max_sequence_length)
     valid_loader = utils.setup_loader(
         valid_dataset, batch_size, local_rank, n_gpu,
         1, num_workers,
@@ -621,10 +637,8 @@ def run_eval(model_type: str,
 
     metric_functions = [registry.get_metric(name) for name in metrics]
     save_outputs = run_eval_epoch(valid_loader, runner, is_master)
-    target = [el['target'] for el in save_outputs]
-    prediction = [el['prediction'] for el in save_outputs]
 
-    metrics_to_save = {name: metric(target, prediction)
+    metrics_to_save = {name: metric(save_outputs)
                        for name, metric in zip(metrics, metric_functions)}
     logger.info(''.join(f'{name}: {val}' for name, val in metrics_to_save.items()))
 
