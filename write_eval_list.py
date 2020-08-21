@@ -7,16 +7,17 @@ import shlex
 import json
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 from tape.main import *
 
 TASKS = ['secondary_structure',
          'contact_prediction',
          'remote_homology']
-TASK_SPLITS = {'secondary_structure':  ['casp12', 'cb513', 'ts115'],
-               'remote_homology':  ['test_fold_holdout',
-                                   'test_family_holdout',
-                                   'test_superfamily_holdout'],
-               'contact_prediction':  ['test']}
+TASK_SPLITS_TEST = {'secondary_structure':  ['casp12', 'cb513', 'ts115'],
+                    'remote_homology':  ['test_fold_holdout',
+                                        'test_family_holdout',
+                                        'test_superfamily_holdout'],
+                    'contact_prediction':  ['test']}
 TAPE_ROWS = [{'model_type': 'transformer', 'task': 'secondary_structure', 'split': 'cb513', 'pretrain_task': 'tape_none', 'accuracy': 0.70},
              {'model_type': 'transformer', 'task': 'secondary_structure', 'split': 'casp12', 'pretrain_task': 'tape_none', 'accuracy': 0.68},
              {'model_type': 'transformer', 'task': 'secondary_structure', 'split': 'ts115', 'pretrain_task': 'tape_none', 'accuracy': 0.73},
@@ -105,6 +106,63 @@ def unravel_list_dict(l):
             d[name][index] = value
     return d
 
+def strip_df(df):
+    orig_task_list = df.loc[[(isinstance(item, str) and '-15-' in item) for item in df['orig_file']], 'pretrain_task']
+    orig_task_list = [task + '_long' for task in orig_task_list]
+    df.loc[[(isinstance(item, str) and '-15-' in item) for item in df['orig_file']], 'pretrain_task'] = orig_task_list
+    is_from_tape = [isinstance(task, str) and task.startswith('tape') for task in df['pretrain_task']]
+    df['is_from_tape'] = is_from_tape
+    df.loc[pd.isnull(df['pretrain_task']), 'pretrain_task'] = 'none'
+    return df
+
+def barplot_task(task='secondary_structure',
+                 custom_order=['none',
+                               'tape_none',
+                               'profile_prediction',
+                               'joint_mlm_profile',
+                               'tape_mlm',
+                               'tape_baseline'],
+                 custom_spacing=[0,
+                                 1,
+                                 2.4,
+                                 3.4,
+                                 4.4,
+                                 5.8],
+                ylim=(0.6, 0.8),
+                label_size=14,
+                title_size=16,
+                suptitle_size=20,
+                label_rotation=40,
+                dpi=150,
+                num_ticks=6,
+                metric='accuracy'):
+    splits = np.unique(df.loc[df['task'] == task, 'split'])
+    fig, axs = plt.subplots(1, len(splits), figsize=(5 * len(splits), 5), dpi=dpi)
+    if len(splits) == 1:
+        axs = [axs]
+    colors = ['firebrick', 'darkblue', 'forestgreen', 'purple', 'orange']
+    for split, ax, color in zip(splits, axs, colors):
+        select_df = df[np.logical_and(df['task'] == task,
+                                      df['split'] == split)]
+
+        select_df = select_df.set_index('pretrain_task').reindex(custom_order).reset_index()
+        ax.bar(custom_spacing, select_df[metric], color=color)
+        ax.set_xticks(custom_spacing)
+        ax.set_xticklabels(select_df['pretrain_task'], rotation=label_rotation, ha='right')
+        ax.tick_params(labelsize=label_size)
+        ax.set_yticks(np.linspace(ylim[0], ylim[1], num_ticks))
+        ax.set_ylim(*ylim)
+        ax.grid(axis='y')
+        ax.set_axisbelow(True)
+        ax.spines['left'].set_linewidth(2.0)
+        ax.spines['bottom'].set_linewidth(2.0)
+        ax.spines['top'].set_linewidth(0.1)
+        ax.spines['right'].set_linewidth(0.1)
+        ax.set_title(f'split: {split}', fontsize=title_size)
+    fig.suptitle(f'Task: {task}', fontsize=suptitle_size, y=1.1)
+    fig.tight_layout()
+    return fig, axs
+
 def write_list():
     arg_list = get_arg_list()
 
@@ -119,6 +177,15 @@ def write_list():
     write_dict = unravel_list_dict(arg_list)
     results_df = pd.DataFrame(write_dict)
     results_df.to_csv('/export/home/tape/eval_results.csv')
+
+    fig, ax = barplot_task(task='secondary_structure')
+    fig.savefig('figures/secondary_structure.png', dpi=150)
+
+    fig, ax = barplot_task('remote_homology', ylim=(0.0, 1.0), num_ticks=9)
+    fig.savefig('figures/secondary_structure.png', dpi=150)
+
+    fig, ax = barplot_task('contact_prediction', ylim=(0.0, 0.7), metric='precision_at_l5')
+    fig.savefig('figures/secondary_structure.png', dpi=150)
 
 if __name__ == '__main__':
     write_list()
