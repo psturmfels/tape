@@ -8,6 +8,7 @@ import math
 import operator
 import bisect
 import pickle
+import numpy as np
 from torch.utils.data.sampler import Sampler
 from torch.utils.data.sampler import BatchSampler
 from torch.utils.data.sampler import SubsetRandomSampler
@@ -22,6 +23,50 @@ class KeyWrapper:
 
     def __len__(self):
         return len(self.it)
+
+class DynamicBatchSampler(Sampler):
+    """
+    Samples batches according to fixed token limits.
+    """
+    def __init__(self, sampler, token_size, drop_last):
+        if not isinstance(token_size, int) or token_size <= 0:
+            raise ValueError("token_size should be a positive integer value, "
+                             "but got token_size={}".format(token_size))
+        if not isinstance(drop_last, bool):
+            raise ValueError("drop_last should be a boolean value, but got "
+                             "drop_last={}".format(drop_last))
+        self.sampler = sampler
+        self.token_size = token_size
+        self.drop_last = drop_last
+        self.computed_length = None
+
+    def __iter__(self):
+        batch = []
+
+        for idx, num_tokens in self.sampler:
+            batch.append(idx)
+
+            if num_tokens * len(batch) >= self.token_size:
+                yield batch
+                batch = []
+        if len(batch) > 0 and not self.drop_last:
+            yield batch
+
+    def __len__(self):
+        if self.computed_length is not None:
+            return self.computed_length
+        else:
+            self.computed_length = 0
+            batch_size = 0
+            for _, num_tokens in self.sampler:
+                batch_size += 1
+
+                if num_tokens * batch_size >= self.token_size:
+                    batch_size = 0
+                    self.computed_length += 1
+            if batch_size > 0 and not self.drop_last:
+                self.computed_length += 1
+        return self.computed_length
 
 class SortedSampler(Sampler):
     """ Samples elements sequentially, always in the same order.
@@ -45,7 +90,9 @@ class SortedSampler(Sampler):
             sort_keys = map(sort_key, dataset)
         else:
             sort_keys = ((i, sort_key(dataset[i])) for i in indices)
-        self.sorted_indices = [i for i, _ in sorted(sort_keys, key=operator.itemgetter(1))]
+
+        self.sorted_indices = sorted(sort_keys, key=operator.itemgetter(1))
+        # self.sorted_indices = [i for i, _ in sorted(sort_keys, key=operator.itemgetter(1))]
 
     def __iter__(self):
         return iter(self.sorted_indices)
@@ -90,17 +137,22 @@ class BucketBatchSampler(BatchSampler):
                  sort_key,
                  dataset,
                  bucket_size_multiplier=100,
-                 precomputed_key_file=None):
+                 precomputed_key_file=None,
+                 token_size=17000):
         super().__init__(sampler, batch_size, drop_last)
         self.sort_key = sort_key
         self.dataset = dataset
         self.bucket_sampler = BatchSampler(
             sampler, min(batch_size * bucket_size_multiplier, len(sampler)), False)
+        self.token_size = token_size
+
         if precomputed_key_file is not None:
             with open(precomputed_key_file, 'rb') as handle:
                 self.precomputed_keys = pickle.load(handle)
+            self.total_num_tokens = np.sum(self.precomputed_keys)
         else:
             self.precomputed_keys = None
+            self.total_num_tokens = np.sum(list(map(sort_key, dataset)))
 
     def __iter__(self):
         for bucket in self.bucket_sampler:
@@ -110,13 +162,11 @@ class BucketBatchSampler(BatchSampler):
                                                indices=bucket)
             else:
                 sorted_sampler = SortedSampler(self.dataset, self.sort_key, indices=bucket)
-            count = 0
-            for batch in SubsetRandomSampler(list(BatchSampler(sorted_sampler, self.batch_size, self.drop_last))):
-                count += 1
+            for batch in SubsetRandomSampler(list(DynamicBatchSampler(sorted_sampler, self.token_size, self.drop_last))):
                 yield batch
 
     def __len__(self):
         if self.drop_last:
-            return len(self.sampler) // self.batch_size
+            return self.total_num_tokens // self.token_size
         else:
-            return math.ceil(len(self.sampler) / self.batch_size)
+            return math.ceil(self.total_num_tokens / self.token_size)
