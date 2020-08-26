@@ -112,8 +112,6 @@ def create_train_parser(base_parser: argparse.ArgumentParser) -> argparse.Argume
                         help='Pickle file containing precomputed sequence lengths.')
     parser.add_argument('--valid_key_file', default=None, type=str,
                         help='Pickle file containing precomputed sequence lengths.')
-    parser.add_argument('--token_size', default=17000, type=int,
-                        help='Maximum number of tokens in gpu memory.')
     return parser
 
 

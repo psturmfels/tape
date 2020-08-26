@@ -13,6 +13,8 @@ from torch.utils.data.sampler import Sampler
 from torch.utils.data.sampler import BatchSampler
 from torch.utils.data.sampler import SubsetRandomSampler
 
+AVERAGE_LENGTH = 180.0
+
 class KeyWrapper:
     def __init__(self, iterable, key):
         self.it = iterable
@@ -28,45 +30,64 @@ class DynamicBatchSampler(Sampler):
     """
     Samples batches according to fixed token limits.
     """
-    def __init__(self, sampler, token_size, drop_last):
-        if not isinstance(token_size, int) or token_size <= 0:
-            raise ValueError("token_size should be a positive integer value, "
-                             "but got token_size={}".format(token_size))
+    def __init__(self, sampler, batch_size, drop_last,
+                 length_cutoffs=[(0, 13000),
+                                 (300, 12000),
+                                 (400, 8000),
+                                 (600, 6000)]):
+        if not isinstance(batch_size, int) or batch_size <= 0:
+            raise ValueError("batch_size should be a positive integer value, "
+                             "but got f={}".format(batch_size))
         if not isinstance(drop_last, bool):
             raise ValueError("drop_last should be a boolean value, but got "
                              "drop_last={}".format(drop_last))
         self.sampler = sampler
-        self.token_size = token_size
+        self.batch_size = batch_size
         self.drop_last = drop_last
-        self.computed_length = None
+        self.length_cutoffs = length_cutoffs
+        self.partition_windows = self._compute_partition()
+
+    def _exceeds_limit(self, num_tokens, batch_len):
+        batch_sum_tokens = num_tokens * batch_len
+        for length_cutoff, length_cutoff_size in self.length_cutoffs:
+            if num_tokens > length_cutoff and \
+                batch_sum_tokens > length_cutoff_size:
+                return True
+        return False
+
+    def _compute_partition(self):
+        num_indices = len(self.sampler)
+        number_of_batches = len(self)
+        partition_windows = list(range(num_indices - number_of_batches + 1,
+                                       num_indices + 1))
+        current_partition_index = 0
+        current_partition_count = 0
+        t = []
+        for i, (idx, num_tokens) in enumerate(self.sampler):
+            current_partition_count += 1
+            if current_partition_index == len(partition_windows) - 1:
+                return partition_windows
+            elif i == partition_windows[current_partition_index]:
+                return partition_windows
+            elif self._exceeds_limit(num_tokens, current_partition_count):
+                t.append(num_tokens)
+                current_partition_count = 1
+                partition_windows[current_partition_index] = i - 1
+                current_partition_index += 1
+
 
     def __iter__(self):
-        batch = []
-
-        for idx, num_tokens in self.sampler:
-            batch.append(idx)
-
-            if num_tokens * len(batch) >= self.token_size:
-                yield batch
-                batch = []
-        if len(batch) > 0 and not self.drop_last:
-            yield batch
+        indices = [idx for idx, _ in self.sampler]
+        start = 0
+        for end in self.partition_windows:
+            yield list(indices[start:end])
+            start = end
 
     def __len__(self):
-        if self.computed_length is not None:
-            return self.computed_length
+        if self.drop_last:
+            return len(self.sampler) // self.batch_size
         else:
-            self.computed_length = 0
-            batch_size = 0
-            for _, num_tokens in self.sampler:
-                batch_size += 1
-
-                if num_tokens * batch_size >= self.token_size:
-                    batch_size = 0
-                    self.computed_length += 1
-            if batch_size > 0 and not self.drop_last:
-                self.computed_length += 1
-        return self.computed_length
+            return math.ceil(len(self.sampler) / self.batch_size)
 
 class SortedSampler(Sampler):
     """ Samples elements sequentially, always in the same order.
@@ -137,22 +158,18 @@ class BucketBatchSampler(BatchSampler):
                  sort_key,
                  dataset,
                  bucket_size_multiplier=100,
-                 precomputed_key_file=None,
-                 token_size=17000):
+                 precomputed_key_file=None):
         super().__init__(sampler, batch_size, drop_last)
         self.sort_key = sort_key
         self.dataset = dataset
         self.bucket_sampler = BatchSampler(
             sampler, min(batch_size * bucket_size_multiplier, len(sampler)), False)
-        self.token_size = token_size
 
         if precomputed_key_file is not None:
             with open(precomputed_key_file, 'rb') as handle:
                 self.precomputed_keys = pickle.load(handle)
-            self.total_num_tokens = np.sum(self.precomputed_keys)
         else:
             self.precomputed_keys = None
-            self.total_num_tokens = np.sum(list(map(sort_key, dataset)))
 
     def __iter__(self):
         for bucket in self.bucket_sampler:
@@ -162,11 +179,12 @@ class BucketBatchSampler(BatchSampler):
                                                indices=bucket)
             else:
                 sorted_sampler = SortedSampler(self.dataset, self.sort_key, indices=bucket)
-            for batch in SubsetRandomSampler(list(DynamicBatchSampler(sorted_sampler, self.token_size, self.drop_last))):
+            # for batch in SubsetRandomSampler(list(DynamicBatchSampler(sorted_sampler, self.batch_size, self.drop_last))):
+            for batch in reversed(list(DynamicBatchSampler(sorted_sampler, self.batch_size, self.drop_last))):
                 yield batch
 
     def __len__(self):
         if self.drop_last:
-            return self.total_num_tokens // self.token_size
+            return len(self.sampler) // self.batch_size
         else:
-            return math.ceil(self.total_num_tokens / self.token_size)
+            return math.ceil(len(self.sampler) / self.batch_size)

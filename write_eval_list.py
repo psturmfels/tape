@@ -9,15 +9,43 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from tape.main import *
+import argparse
+
+def create_parser():
+    parser = argparse.ArgumentParser(description='Evaluates tape models')
+    parser.add_argument('--split',
+                        choices=['valid', 'test'],
+                        default='valid',
+                        help='Split to evaluate on')
+    parser.add_argument('--results_dir',
+                        default='/export/home/tape/results/',
+                        type=str,
+                        help='Where results are located')
+    return parser
 
 TASKS = ['secondary_structure',
          'contact_prediction',
-         'remote_homology']
+         'remote_homology',
+         'fluorescence',
+         'stability']
+TASK_METRICS = {'secondary_structure': 'accuracy',
+                'remote_homology': 'accuracy',
+                'contact_prediction': 'precision_at_l5',
+                'fluorescence': 'spearmanr',
+                'stability': 'spearmanr'}
 TASK_SPLITS_TEST = {'secondary_structure':  ['casp12', 'cb513', 'ts115'],
                     'remote_homology':  ['test_fold_holdout',
                                         'test_family_holdout',
                                         'test_superfamily_holdout'],
-                    'contact_prediction':  ['test']}
+                    'contact_prediction':  ['test'],
+                    'fluorescence': ['test'],
+                    'stability': ['test']}
+TASK_SPLITS_VALID = {'secondary_structure':  ['valid'],
+                     'remote_homology':  ['valid'],
+                     'contact_prediction':  ['valid'],
+                     'fluorescence': ['valid'],
+                     'stability': ['valid']}
+
 TAPE_ROWS = [{'model_type': 'transformer', 'task': 'secondary_structure', 'split': 'cb513', 'pretrain_task': 'tape_none', 'accuracy': 0.70},
              {'model_type': 'transformer', 'task': 'secondary_structure', 'split': 'casp12', 'pretrain_task': 'tape_none', 'accuracy': 0.68},
              {'model_type': 'transformer', 'task': 'secondary_structure', 'split': 'ts115', 'pretrain_task': 'tape_none', 'accuracy': 0.73},
@@ -38,20 +66,32 @@ TAPE_ROWS = [{'model_type': 'transformer', 'task': 'secondary_structure', 'split
              {'model_type': 'transformer', 'task': 'remote_homology', 'split': 'test_superfamily_holdout', 'pretrain_task': 'tape_baseline', 'accuracy': 0.43},
              {'model_type': 'transformer', 'task': 'contact_prediction', 'split': 'test', 'pretrain_task': 'tape_none', 'precision_at_l5': 0.40},
              {'model_type': 'transformer', 'task': 'contact_prediction', 'split': 'test', 'pretrain_task': 'tape_mlm', 'precision_at_l5': 0.46},
-             {'model_type': 'transformer', 'task': 'contact_prediction', 'split': 'test', 'pretrain_task': 'tape_baseline', 'precision_at_l5': 0.66}]
+             {'model_type': 'transformer', 'task': 'contact_prediction', 'split': 'test', 'pretrain_task': 'tape_baseline', 'precision_at_l5': 0.66},
+             {'model_type': 'transformer', 'task': 'fluorescence', 'split': 'test', 'pretrain_task': 'tape_none', 'spearmanr': 0.22},
+             {'model_type': 'transformer', 'task': 'fluorescence', 'split': 'test', 'pretrain_task': 'tape_mlm', 'spearmanr': 0.68},
+             {'model_type': 'transformer', 'task': 'fluorescence', 'split': 'test', 'pretrain_task': 'tape_baseline', 'spearmanr': 0.67},
+             {'model_type': 'transformer', 'task': 'stability', 'split': 'test', 'pretrain_task': 'tape_none', 'spearmanr': -0.06},
+             {'model_type': 'transformer', 'task': 'stability', 'split': 'test', 'pretrain_task': 'tape_mlm', 'spearmanr': 0.73},
+             {'model_type': 'transformer', 'task': 'stability', 'split': 'test', 'pretrain_task': 'tape_baseline', 'spearmanr': 0.73}]
 
 def starts_with_task(f):
     return np.any([f.startswith(t) for t in TASKS])
 
-def get_arg_list(results_dir='/export/home/tape/results/'):
+def get_arg_list(results_dir='/export/home/tape/results/',
+                 split='valid'):
+    if split == 'valid':
+        task_splits = TASK_SPLITS_VALID
+    else:
+        task_splits = TASK_SPLITS_TEST
+
     pretrain_files = os.listdir(results_dir)
     pretrain_files = [f for f in pretrain_files if starts_with_task(f)]
 
     arg_list = []
     for pretrain_file in pretrain_files:
         file_split = pretrain_file.split('_')
-        task = file_split[0] + '_' + file_split[1]
-        model_type = file_split[2]
+        model_type = 'transformer'
+        task = pretrain_file.split(f'_{model_type}_')[0]
         from_pretrained = os.path.join('results/', pretrain_file)
 
         with open(os.path.join(from_pretrained, 'args.json')) as json_file:
@@ -64,16 +104,20 @@ def get_arg_list(results_dir='/export/home/tape/results/'):
             pretrain_task = orig_file.split('_' + model_type + '_')[0].split('/')[-1]
             orig_file = orig_file.split('/home/tape/')[-1]
 
-        for split in TASK_SPLITS[task]:
-            arg_list.append({'model_type': model_type,
-                             'task': task,
-                             'from_pretrained': from_pretrained,
-                             'batch_size': 32,
-                             'metrics': 'accuracy',
-                             'split': split,
-                             'max_sequence_length': 270,
-                             'orig_file': orig_file,
-                             'pretrain_task': pretrain_task})
+        for split in task_splits[task]:
+            d = {'model_type': model_type,
+                 'task': task,
+                 'from_pretrained': from_pretrained,
+                 'batch_size': 32,
+                 'metrics': TASK_METRICS[task],
+                 'split': split,
+                 'orig_file': orig_file,
+                 'pretrain_task': pretrain_task}
+            if task == 'secondary_structure' or \
+                task == 'contact_prediction' or \
+                task == 'remote_homology':
+                d['max_sequence_length'] = 270
+            arg_list.append(d)
     return arg_list
 
 def get_args(model_type='transformer',
@@ -82,13 +126,14 @@ def get_args(model_type='transformer',
              batch_size=32,
              metrics='accuracy',
              split='test',
-             max_sequence_length=270,
+             max_sequence_length=None,
              **kwargs):
     base_parser = create_base_parser()
     parser = create_eval_parser(base_parser)
-    arg_string  = f'{model_type} {task} {from_pretrained} '
+    arg_string  = f'{model_type} {task} {from_pretrained} --num_workers 0 '
     arg_string += f'--batch_size {batch_size} --metrics {metrics} --split {split} '
-    arg_string += f'--max_sequence_length {max_sequence_length}'
+    if max_sequence_length is not None:
+        arg_string += f'--max_sequence_length {max_sequence_length}'
     args = parser.parse_args(shlex.split(arg_string))
     return args
 
@@ -115,7 +160,8 @@ def strip_df(df):
     df.loc[pd.isnull(df['pretrain_task']), 'pretrain_task'] = 'none'
     return df
 
-def barplot_task(task='secondary_structure',
+def barplot_task(df,
+                 task='secondary_structure',
                  custom_order=['none',
                                'tape_none',
                                'profile_prediction',
@@ -163,8 +209,12 @@ def barplot_task(task='secondary_structure',
     fig.tight_layout()
     return fig, axs
 
-def write_list():
-    arg_list = get_arg_list()
+def write_list(args=None):
+    if args is None:
+        parser = create_parser()
+        args = parser.parse_args()
+
+    arg_list = get_arg_list(args.results_dir, args.split)
 
     for arg_dict in arg_list:
         print(f'-----Running: {arg_dict}')
@@ -176,16 +226,23 @@ def write_list():
     arg_list += TAPE_ROWS
     write_dict = unravel_list_dict(arg_list)
     results_df = pd.DataFrame(write_dict)
+    results_df = strip_df(results_df)
     results_df.to_csv('/export/home/tape/eval_results.csv')
 
-    fig, ax = barplot_task(task='secondary_structure')
+    fig, ax = barplot_task(results_df, task='secondary_structure')
     fig.savefig('figures/secondary_structure.png', dpi=150)
 
-    fig, ax = barplot_task('remote_homology', ylim=(0.0, 1.0), num_ticks=9)
-    fig.savefig('figures/secondary_structure.png', dpi=150)
+    fig, ax = barplot_task(results_df, task='remote_homology', ylim=(0.0, 1.0), num_ticks=9)
+    fig.savefig('figures/remote_homology.png', dpi=150)
 
-    fig, ax = barplot_task('contact_prediction', ylim=(0.0, 0.7), metric='precision_at_l5')
-    fig.savefig('figures/secondary_structure.png', dpi=150)
+    fig, ax = barplot_task(results_df, task='contact_prediction', ylim=(0.0, 0.7), metric='precision_at_l5')
+    fig.savefig('figures/contact_prediction.png', dpi=150)
+
+    fig, ax = barplot_task(results_df, task='fluorescence', ylim=(0.0, 1.0), num_ticks=9)
+    fig.savefig('figures/fluorescence.png', dpi=150)
+
+    fig, ax = barplot_task(results_df, task='stability', ylim=(0.0, 1.0), num_ticks=9)
+    fig.savefig('figures/stability.png', dpi=150)
 
 if __name__ == '__main__':
     write_list()

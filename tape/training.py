@@ -300,6 +300,7 @@ def run_train_epoch(epoch_id: int,
 
     start_t = timer()
     for step, batch in enumerate(train_loader):
+        print(step, batch['input_ids'].shape)
         loss, metrics = runner.forward(batch)  # type: ignore
         runner.backward(loss)
         accumulator.update(loss, metrics, step=False)
@@ -444,8 +445,7 @@ def run_train(model_type: str,
               dataset_train_fraction: float = None,
               dataset_valid_fraction: float = None,
               train_key_file: str = None,
-              valid_key_file: str = None,
-              token_size: int = 17000) -> None:
+              valid_key_file: str = None) -> None:
     # SETUP AND LOGGING CODE #
     input_args = locals()
     device, n_gpu, is_master = utils.setup_distributed(
@@ -469,15 +469,13 @@ def run_train(model_type: str,
                                         'train',
                                         tokenizer,
                                         dataset_fraction=dataset_train_fraction,
-                                        max_sequence_length=max_sequence_length,
-                                        token_size=token_size)
+                                        max_sequence_length=max_sequence_length)
     valid_dataset = utils.setup_dataset(task,
                                         data_dir,
                                         'valid',
                                         tokenizer,
                                         dataset_fraction=dataset_valid_fraction,
-                                        max_sequence_length=max_sequence_length,
-                                        token_size=token_size)
+                                        max_sequence_length=max_sequence_length)
     train_loader = utils.setup_loader(
         train_dataset, batch_size, local_rank, n_gpu,
         gradient_accumulation_steps, num_workers,
