@@ -77,3 +77,28 @@ def precision_at_l5(save_outputs: Sequence[Dict[str, Any]]) -> float:
         correct += np.sum(selected).astype(float)
         total += float(selected.size)
     return correct / total
+
+# def precision_single(pred,
+#                      label,
+#                      length,
+#                      ignore_index=-1):
+#     prob = softmax(pred, axis=2)[:, :, 1]
+#
+#     mask = label != ignore_index
+#     seqpos = np.arange(mask.shape[0])
+#     y_ind, x_ind = np.meshgrid(seqpos, seqpos)
+#     mask &= ((y_ind - x_ind) >=6)
+#     mask = mask.astype(prob.dtype)
+#
+#     masked_prob = np.reshape(prob * mask, -1)
+#     most_likely_indices = np.argsort(masked_prob)[-(length // 5):]
+#     selected = np.reshape(label, -1)[most_likely_indices]
+#     return np.sum(selected) / float(selected.size)
+#
+# def accuracy_single(pred,
+#                     label,
+#                     ignore_index=-1):
+#     pred_array  = score.argmax(-1)
+#     mask = label != ignore_index=-1
+#     is_correct = label[mask] == pred_array[mask]
+#     return is_correct.sum() / float(is_correct.size)

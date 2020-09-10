@@ -569,7 +569,8 @@ class ProteinBertForJointProfileAndMLM(ProteinBertAbstractModel):
         (mlm_loss, mlm_metrics), mlm_outputs = self.mlm(sequence_output, targets)
         (profile_loss, profile_metrics), profile_outputs = self.profile_head(sequence_output, profiles)
 
-        total_loss = mlm_loss + self.profile_weight * profile_loss
+        alpha = self.profile_weight / (self.profile_weight + 1.0)
+        total_loss = (1.0 - alpha) * mlm_loss + alpha * profile_loss * 10.0
         total_metrics = {**profile_metrics, **mlm_metrics}
 
         outputs = ((total_loss, total_metrics), mlm_outputs, sequence_output, pooled_output)

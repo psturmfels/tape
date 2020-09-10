@@ -33,8 +33,7 @@ class DynamicBatchSampler(Sampler):
     def __init__(self, sampler, batch_size, drop_last,
                  length_cutoffs=[(0, 13000),
                                  (300, 12000),
-                                 (400, 8000),
-                                 (600, 6000)]):
+                                 (400, 6000)]):
         if not isinstance(batch_size, int) or batch_size <= 0:
             raise ValueError("batch_size should be a positive integer value, "
                              "but got f={}".format(batch_size))
@@ -65,7 +64,7 @@ class DynamicBatchSampler(Sampler):
         t = []
         for i, (idx, num_tokens) in enumerate(self.sampler):
             current_partition_count += 1
-            if current_partition_index == len(partition_windows) - 1:
+            if current_partition_index == len(partition_windows):
                 return partition_windows
             elif i == partition_windows[current_partition_index]:
                 return partition_windows
@@ -164,7 +163,6 @@ class BucketBatchSampler(BatchSampler):
         self.dataset = dataset
         self.bucket_sampler = BatchSampler(
             sampler, min(batch_size * bucket_size_multiplier, len(sampler)), False)
-
         if precomputed_key_file is not None:
             with open(precomputed_key_file, 'rb') as handle:
                 self.precomputed_keys = pickle.load(handle)
@@ -179,8 +177,7 @@ class BucketBatchSampler(BatchSampler):
                                                indices=bucket)
             else:
                 sorted_sampler = SortedSampler(self.dataset, self.sort_key, indices=bucket)
-            # for batch in SubsetRandomSampler(list(DynamicBatchSampler(sorted_sampler, self.batch_size, self.drop_last))):
-            for batch in reversed(list(DynamicBatchSampler(sorted_sampler, self.batch_size, self.drop_last))):
+            for batch in SubsetRandomSampler(list(DynamicBatchSampler(sorted_sampler, self.batch_size, self.drop_last))):
                 yield batch
 
     def __len__(self):

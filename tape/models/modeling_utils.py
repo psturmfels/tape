@@ -892,19 +892,113 @@ class SequenceToSequenceClassificationHead(nn.Module):
             outputs = (loss_and_metrics,) + outputs
         return outputs  # (loss), sequence_logits
 
+class ResidualBlock(nn.Module):
+    def __init__(self,
+                 filters_in=64,
+                 filters_out=64,
+                 kernel_size=3,
+                 stride=1,
+                 padding=1,
+                 activation=nn.ReLU):
+        super().__init__()
+        self.filters_in  = filters_in
+        self.filters_out = filters_out
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+        self.activation = activation
+
+        self.conv_1 = nn.Conv2d(in_channels=filters_in,
+                                out_channels=filters_in,
+                                kernel_size=1,
+                                stride=1,
+                                padding=0)
+        self.layer_norm_1 = nn.BatchNorm2d(filters_in)
+        self.conv_2 = nn.Conv2d(in_channels=filters_in,
+                                out_channels=filters_in,
+                                kernel_size=kernel_size,
+                                stride=stride,
+                                padding=padding)
+        self.layer_norm_2 = nn.BatchNorm2d(filters_in)
+        self.conv_3 = nn.Conv2d(in_channels=filters_in,
+                                out_channels=filters_out,
+                                kernel_size=1,
+                                stride=1,
+                                padding=0)
+        self.layer_norm_3 = nn.BatchNorm2d(filters_out)
+
+    def forward(self, inputs):
+        shortcut = inputs
+
+        out = self.conv_1(inputs)
+        out = self.layer_norm_1(out)
+        out = self.activation(out)
+
+        out = self.conv_2(out)
+        out = self.layer_norm_2(out)
+        out = self.activation(out)
+
+        out = self.conv_3(out)
+        out = self.layer_norm_3(out)
+
+        return self.activation(out + shortcut)
+
+class ResidualNetwork(nn.Module):
+    def __init__(self,
+                 in_features=1536,
+                 num_blocks=30,
+                 filters_in=64,
+                 filters_out=64,
+                 kernel_size=3,
+                 stride=1,
+                 padding=1,
+                 activation=nn.ReLU):
+        super().__init__()
+        self.num_blocks = num_blocks
+        self.padded_conv = nn.Conv2d(in_channels=in_features,
+                                     out_channels=filters_in,
+                                     kernel_size=1,
+                                     stride=1,
+                                     padding=0)
+        self.dropout = nn.Dropout(p=0.1)
+        self.block_list = [ResidualBlock(filters_in=filters_in,
+                                         filters_out=filters_out,
+                                         kernel_size=kernel_size,
+                                         stride=stride,
+                                         padding=padding,
+                                         activation=nn.ReLU) for _ in range(num_blocks)]
+        self.dropout_list = [nn.Dropout(p=0.1) for _ in range(num_blocks)]
+
+    def forward(self, inputs):
+        out = self.padded_conv(inputs)
+        out = self.dropout(out)
+
+        for block, dropout in zip(self.block_list, self.dropout_list):
+            out = block(out)
+            out = dropout(out)
+
+        return out
 
 class PairwiseContactPredictionHead(nn.Module):
 
-    def __init__(self, hidden_size: int, ignore_index=-100):
+    def __init__(self,
+                 hidden_size: int,
+                 ignore_index=-100,):
         super().__init__()
+        self.resnet = ResidualNetwork(in_features=2 * hidden_size)
         self.predict = nn.Sequential(
-            nn.Dropout(), nn.Linear(2 * hidden_size, 2))
+            nn.Dropout(), nn.Linear(64, 2))
         self._ignore_index = ignore_index
 
     def forward(self, inputs, sequence_lengths, targets=None):
         prod = inputs[:, :, None, :] * inputs[:, None, :, :]
         diff = inputs[:, :, None, :] - inputs[:, None, :, :]
         pairwise_features = torch.cat((prod, diff), -1)
+
+        pairwise_features = torch.transpose(pairwise_features, 1, 3)
+        conv_out   = self.resnet(pairwise_features)
+        pairwise_features = torch.transpose(pairwise_features, 1, 3)
+
         prediction = self.predict(pairwise_features)
         prediction = (prediction + prediction.transpose(1, 2)) / 2
         prediction = prediction[:, 1:-1, 1:-1].contiguous()  # remove start/stop tokens

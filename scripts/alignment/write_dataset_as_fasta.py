@@ -19,7 +19,7 @@ def create_parser():
                         help='The task to serialize')
     parser.add_argument('--split',
                         default='train',
-                        choices=['train', 'valid', 'holdout'],
+                        type=str,
                         help='The split to tokenize.')
     parser.add_argument('--data_dir',
                         default='/export/home/tape/data/',
@@ -55,9 +55,14 @@ def write_dataset_as_fasta(task,
     for item in tqdm(dataset.data, total=len(dataset)):
         sequence_length = item['protein_length']
         sequence_string = item['primary']
-        sequence_family = item['family']
-        sequence_clan   = item['clan']
-        sequence_id     = item['id']
+
+        sequence_family = item.get('family', 'unknown_family')
+        sequence_clan   = item.get('clan', 'unknown_clan')
+        sequence_id     = item.get('id', 'unknown_id')
+        try:
+            sequence_id = sequence_id.decode('utf-8')
+        except (UnicodeDecodeError, AttributeError):
+            pass
 
         sequence = Seq(sequence_string, alphabet=Alphabet.IUPAC)
         sequence_id_string = f'id: {sequence_id}|length: {sequence_length}|' + \

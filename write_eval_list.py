@@ -21,6 +21,10 @@ def create_parser():
                         default='/export/home/tape/results/',
                         type=str,
                         help='Where results are located')
+    parser.add_argument('--out_file',
+                        default='/export/home/tape/eval_results.csv',
+                        type=str,
+                        help='csv file to output')
     return parser
 
 TASKS = ['secondary_structure',
@@ -91,7 +95,14 @@ def get_arg_list(results_dir='/export/home/tape/results/',
     for pretrain_file in pretrain_files:
         file_split = pretrain_file.split('_')
         model_type = 'transformer'
-        task = pretrain_file.split(f'_{model_type}_')[0]
+        if '_joint_mlm_profile_transformer' in pretrain_file:
+            task = pretrain_file.split('_joint_mlm_profile_transformer')[0]
+        elif '_profile_prediction_transformer' in pretrain_file:
+            task = pretrain_file.split('_profile_prediction_transformer')[0]
+        elif '_masked_language_modeling_transformer' in pretrain_file:
+            task = pretrain_file.split('_masked_language_modeling_transformer')[0]
+        else:
+            task = pretrain_file.split(f'_{model_type}_')[0]
         from_pretrained = os.path.join('results/', pretrain_file)
 
         with open(os.path.join(from_pretrained, 'args.json')) as json_file:
@@ -113,17 +124,15 @@ def get_arg_list(results_dir='/export/home/tape/results/',
                  'split': split,
                  'orig_file': orig_file,
                  'pretrain_task': pretrain_task}
-            if task == 'secondary_structure' or \
-                task == 'contact_prediction' or \
-                task == 'remote_homology':
-                d['max_sequence_length'] = 270
+            if task == 'contact_prediction':
+                d['batch_size'] = 4
             arg_list.append(d)
     return arg_list
 
 def get_args(model_type='transformer',
              task='secondary_structure',
              from_pretrained='results/secondary_structure_transformer_20-08-18-19-18-09_334672/',
-             batch_size=32,
+             batch_size=4,
              metrics='accuracy',
              split='test',
              max_sequence_length=None,
@@ -215,6 +224,7 @@ def write_list(args=None):
         args = parser.parse_args()
 
     arg_list = get_arg_list(args.results_dir, args.split)
+    out_file = args.out_file
 
     for arg_dict in arg_list:
         print(f'-----Running: {arg_dict}')
@@ -227,22 +237,22 @@ def write_list(args=None):
     write_dict = unravel_list_dict(arg_list)
     results_df = pd.DataFrame(write_dict)
     results_df = strip_df(results_df)
-    results_df.to_csv('/export/home/tape/eval_results.csv')
+    results_df.to_csv(out_file)
 
-    fig, ax = barplot_task(results_df, task='secondary_structure')
-    fig.savefig('figures/secondary_structure.png', dpi=150)
-
-    fig, ax = barplot_task(results_df, task='remote_homology', ylim=(0.0, 1.0), num_ticks=9)
-    fig.savefig('figures/remote_homology.png', dpi=150)
-
-    fig, ax = barplot_task(results_df, task='contact_prediction', ylim=(0.0, 0.7), metric='precision_at_l5')
-    fig.savefig('figures/contact_prediction.png', dpi=150)
-
-    fig, ax = barplot_task(results_df, task='fluorescence', ylim=(0.0, 1.0), num_ticks=9)
-    fig.savefig('figures/fluorescence.png', dpi=150)
-
-    fig, ax = barplot_task(results_df, task='stability', ylim=(0.0, 1.0), num_ticks=9)
-    fig.savefig('figures/stability.png', dpi=150)
+    # fig, ax = barplot_task(results_df, task='secondary_structure')
+    # fig.savefig('figures/secondary_structure.png', dpi=150)
+    #
+    # fig, ax = barplot_task(results_df, task='remote_homology', ylim=(0.0, 1.0), num_ticks=9)
+    # fig.savefig('figures/remote_homology.png', dpi=150)
+    #
+    # fig, ax = barplot_task(results_df, task='contact_prediction', ylim=(0.0, 0.7), metric='precision_at_l5')
+    # fig.savefig('figures/contact_prediction.png', dpi=150)
+    #
+    # fig, ax = barplot_task(results_df, task='fluorescence', ylim=(0.0, 1.0), num_ticks=9)
+    # fig.savefig('figures/fluorescence.png', dpi=150)
+    #
+    # fig, ax = barplot_task(results_df, task='stability', ylim=(0.0, 1.0), num_ticks=9)
+    # fig.savefig('figures/stability.png', dpi=150)
 
 if __name__ == '__main__':
     write_list()

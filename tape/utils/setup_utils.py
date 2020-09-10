@@ -116,7 +116,10 @@ def setup_loader(dataset: Dataset,
                  precomputed_key_file: str = '/export/home/tape/data/alignment_indexed/pfam/train_lengths.pkl') -> DataLoader:
     sampler = DistributedSampler(dataset) if local_rank != -1 else RandomSampler(dataset)
     batch_size = get_effective_batch_size(
-        batch_size, local_rank, n_gpu, gradient_accumulation_steps) * n_gpu
+        batch_size, local_rank, n_gpu, gradient_accumulation_steps) # * n_gpu
+    # Note: Above the line multiplied by the number of GPUs. I suspect this is a mistake.
+    # I've commented it out for now.
+
     # WARNING: this will fail if the primary sequence is not the first thing the dataset returns
     batch_sampler = BucketBatchSampler(
         sampler, batch_size, False, lambda x: len(x[0]), dataset,

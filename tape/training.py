@@ -300,7 +300,6 @@ def run_train_epoch(epoch_id: int,
 
     start_t = timer()
     for step, batch in enumerate(train_loader):
-        print(step, batch['input_ids'].shape)
         loss, metrics = runner.forward(batch)  # type: ignore
         runner.backward(loss)
         accumulator.update(loss, metrics, step=False)
