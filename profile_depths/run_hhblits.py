@@ -5,12 +5,14 @@ import numpy as np
 
 def create_parser():
     parser = argparse.ArgumentParser(description='Run hhblits on fasta files')
-    parser.add_argument('--input_file', default='secondary_structure.faa',
+    parser.add_argument('--input_file', default='casp12.faa',
                         type=str, help='Input fasta file')
-    parser.add_argument('--out_dir', default='secondary_structure/',
+    parser.add_argument('--out_dir', default='casp12/',
                         type=str, help='Temporary single line fasta file directory')
-    parser.add_argument('--database_path', default='scop40/scop40',
+    parser.add_argument('--database_path', default='uniclust30_2018_08/uniclust30_2018_08',
                         type=str, help='Location of reference database')
+    parser.add_argument('--cpus', default=16, type=int,
+                        help='number of cores to use')
     return parser
 
 def split_fasta(input_file,
@@ -46,12 +48,12 @@ def split_fasta(input_file,
                 write_handle.write(f'{sequence}\n')
     return out_files, ids
 
-def run_hhblits(out_dir, out_files, ids, database_path):
+def run_hhblits(out_dir, out_files, ids, database_path, num_cpus):
     result_files = []
     neffs = []
     for out_file, id in zip(out_files, ids):
         result_file = os.path.join(out_dir, id + '.hhr')
-        command = f"hhblits -i {out_file} -o {result_file} -d {database_path}"
+        command = f"hhblits -i {out_file} -o {result_file} -d {database_path} -cpu {num_cpus}"
         print(f"======={command}=======")
         os.system(command)
         result_files.append(result_file)
@@ -70,7 +72,7 @@ def main(args=None):
         parser = create_parser()
         args = parser.parse_args()
     out_files, ids = split_fasta(args.input_file, args.out_dir)
-    result_files, neffs = run_hhblits(args.out_dir, out_files, ids, args.database_path)
+    result_files, neffs = run_hhblits(args.out_dir, out_files, ids, args.database_path, args.cpus)
     result_files = np.array(result_files)
     neffs = np.array(neffs)
     np.save(os.path.join(args.out_dir, 'result_files.npy'), result_files)

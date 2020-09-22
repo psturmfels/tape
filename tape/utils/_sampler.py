@@ -33,7 +33,9 @@ class DynamicBatchSampler(Sampler):
     def __init__(self, sampler, batch_size, drop_last,
                  length_cutoffs=[(0, 13000),
                                  (300, 12000),
-                                 (400, 6000)]):
+                                 (350, 10000),
+                                 (400, 8000),
+                                 (450, 6000)]):
         if not isinstance(batch_size, int) or batch_size <= 0:
             raise ValueError("batch_size should be a positive integer value, "
                              "but got f={}".format(batch_size))
@@ -73,7 +75,7 @@ class DynamicBatchSampler(Sampler):
                 current_partition_count = 1
                 partition_windows[current_partition_index] = i - 1
                 current_partition_index += 1
-
+        return partition_windows
 
     def __iter__(self):
         indices = [idx for idx, _ in self.sampler]

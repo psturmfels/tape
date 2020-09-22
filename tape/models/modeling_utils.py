@@ -25,6 +25,7 @@ import os
 from io import open
 import math
 from torch.nn.utils.weight_norm import weight_norm
+from collections import OrderedDict
 
 import torch
 from torch import nn
@@ -906,7 +907,7 @@ class ResidualBlock(nn.Module):
         self.kernel_size = kernel_size
         self.stride = stride
         self.padding = padding
-        self.activation = activation
+        self.activation = activation()
 
         self.conv_1 = nn.Conv2d(in_channels=filters_in,
                                 out_channels=filters_in,
@@ -961,21 +962,20 @@ class ResidualNetwork(nn.Module):
                                      stride=1,
                                      padding=0)
         self.dropout = nn.Dropout(p=0.1)
-        self.block_list = [ResidualBlock(filters_in=filters_in,
-                                         filters_out=filters_out,
-                                         kernel_size=kernel_size,
-                                         stride=stride,
-                                         padding=padding,
-                                         activation=nn.ReLU) for _ in range(num_blocks)]
-        self.dropout_list = [nn.Dropout(p=0.1) for _ in range(num_blocks)]
+        self.main = nn.Sequential()
+        for i in range(num_blocks):
+            self.main.add_module(f'residual_{i}', ResidualBlock(filters_in=filters_in,
+                                                                filters_out=filters_out,
+                                                                kernel_size=kernel_size,
+                                                                stride=stride,
+                                                                padding=padding,
+                                                                activation=activation))
+            self.main.add_module(f'dropout_{i}', nn.Dropout(p=0.1))
 
     def forward(self, inputs):
         out = self.padded_conv(inputs)
         out = self.dropout(out)
-
-        for block, dropout in zip(self.block_list, self.dropout_list):
-            out = block(out)
-            out = dropout(out)
+        out = self.main(out)
 
         return out
 
@@ -983,21 +983,21 @@ class PairwiseContactPredictionHead(nn.Module):
 
     def __init__(self,
                  hidden_size: int,
-                 ignore_index=-100,):
+                 ignore_index=-100):
         super().__init__()
-        self.resnet = ResidualNetwork(in_features=2 * hidden_size)
+        # self.resnet = ResidualNetwork(in_features=2 * hidden_size)
         self.predict = nn.Sequential(
-            nn.Dropout(), nn.Linear(64, 2))
+            nn.Dropout(), nn.Linear(2 * hidden_size, 2))
         self._ignore_index = ignore_index
 
     def forward(self, inputs, sequence_lengths, targets=None):
         prod = inputs[:, :, None, :] * inputs[:, None, :, :]
         diff = inputs[:, :, None, :] - inputs[:, None, :, :]
         pairwise_features = torch.cat((prod, diff), -1)
-
-        pairwise_features = torch.transpose(pairwise_features, 1, 3)
-        conv_out   = self.resnet(pairwise_features)
-        pairwise_features = torch.transpose(pairwise_features, 1, 3)
+        
+        # pairwise_features = torch.transpose(pairwise_features, 1, 3)
+        # pairwise_features = self.resnet(pairwise_features)
+        # pairwise_features = torch.transpose(pairwise_features, 1, 3)
 
         prediction = self.predict(pairwise_features)
         prediction = (prediction + prediction.transpose(1, 2)) / 2

@@ -406,7 +406,8 @@ def run_eval_epoch(eval_loader: DataLoader,
         for pred, target, length in zip(predictions, targets, protein_lengths):
             save_outputs.append({'prediction': pred,
                                  'target': target,
-                                 'length': length})
+                                 'length': length,
+                                 'id': batch.get('id', None)})
         ##################################
 
     return save_outputs
@@ -555,7 +556,7 @@ def run_train(model_type: str,
 
             if eval_freq > 0 and (epoch_id + 1) % eval_freq == 0:
                 logger.info('------Running evaluation------')
-                val_loss, _ = run_valid_epoch(epoch_id, valid_loader, runner, viz, is_master)
+                val_loss, val_metrics = run_valid_epoch(epoch_id, valid_loader, runner, viz, is_master)
                 logger.info('------Finished evaluation------')
                 if val_loss < best_val_loss:
                     best_val_loss = val_loss
@@ -642,7 +643,7 @@ def run_eval(model_type: str,
                        for name, metric in zip(metrics, metric_functions)}
     logger.info(''.join(f'{name}: {val}' for name, val in metrics_to_save.items()))
 
-    with (pretrained_dir / 'results.pkl').open('wb') as f:
+    with (pretrained_dir / f'{split}.pkl').open('wb') as f:
         pkl.dump((metrics_to_save, save_outputs), f)
 
     return metrics_to_save
